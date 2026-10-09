@@ -1,0 +1,45 @@
+{
+  "_synthetic": "合成样例：结构同真实响应，所有值均为虚构",
+  "success": 1,
+  "data": {
+    "league_id": 1073755865,
+    "season": "示例",
+    "league_season_id": 1011318072,
+    "type": "total",
+    "round": 1,
+    "source": "示例",
+    "table": [
+      {
+        "position": 1,
+        "team": {
+          "id": 1015577461,
+          "name": "示例球队1"
+        },
+        "played": 2,
+        "win": 1,
+        "draw": 2,
+        "lose": 3,
+        "goals_for": 2,
+        "goals_against": 3,
+        "goal_difference": 0,
+        "points": 2
+      },
+      {
+        "position": 0,
+        "team": {
+          "id": 1067840045,
+          "name": "示例球队2"
+        },
+        "played": 1,
+        "win": 1,
+        "draw": 1,
+        "lose": 2,
+        "goals_for": 3,
+        "goals_against": 1,
+        "goal_difference": 1,
+        "points": 3
+      }
+    ]
+  },
+  "_note": "示例"
+}

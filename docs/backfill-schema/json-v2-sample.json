@@ -1,0 +1,98 @@
+[
+  {
+    "match": {
+      "date": "2026-10-06",
+      "weekday": "一",
+      "scope": "jingcai",
+      "jc": { "id": "一003", "weekday": "一", "no": "003" },
+      "competition": { "name": "英超", "type": "联赛", "stage": "8" },
+      "kickoff_hour": 3,
+      "kickoff_at": "2026-10-07T03:00:00+08:00",
+      "teams": { "home": "示例主队", "away": "示例客队" },
+      "ids": { "sporttery_match_id": "demo-003" }
+    },
+    "result": null,
+    "stats": {
+      "recent": {
+        "last10": { "home": { "gf": 12, "ga": 8 }, "away": { "gf": 10, "ga": 11 } },
+        "last6": { "home": { "gf": 7, "ga": 5 }, "away": { "gf": 6, "ga": 7 } },
+        "home_streak_last6": -1.5
+      },
+      "h2h": { "matches": 4, "last6": { "home_gf": 5, "home_ga": 4 }, "home_streak_last6": 1 },
+      "rank": { "home": 5, "away": 12 },
+      "popularity_diff": null,
+      "support_proxy_odds": 0.12,
+      "injury": null,
+      "weather": null
+    },
+    "odds": {
+      "asian": {
+        "macau": { "open": 0.5, "close": null },
+        "crown": {
+          "open": { "home_water": 0.92, "handicap": 0.5, "away_water": 0.94 },
+          "mid": null,
+          "close": null
+        },
+        "william": {
+          "open": { "home_water": 0.90, "handicap": 0.5, "away_water": 0.96 },
+          "mid": null,
+          "close": null
+        },
+        "bet365": {
+          "open": { "home_water": 1.90, "handicap": 0.5, "away_water": 1.95 },
+          "mid": null,
+          "close": null
+        }
+      },
+      "euro_home_win": {
+        "macau": { "open": 1.85, "close": null },
+        "william": { "open": 1.90, "close": null }
+      },
+      "jc_home_win": { "open": 1.72, "close": null },
+      "jc_hhad": {
+        "open": { "goal_line": "-1", "home": 3.10, "draw": 3.40, "away": 2.05 },
+        "close": null
+      },
+      "_snap": {
+        "open_at": "2026-10-06T11:10:00+08:00",
+        "mid_at": null,
+        "close_at": null
+      }
+    },
+    "meta": {
+      "source_file": "demo/json-v2-sample.json",
+      "month": "2610",
+      "schema_version": "2.0",
+      "pipeline": "api_v1"
+    },
+    "prediction": {
+      "direction": "主",
+      "strategy": "CFFXDJ_5_V3",
+      "settle_book": "macau_close",
+      "rationale": ["同桶历史均值偏主", "欧亚方向一致"],
+      "confidence": null
+    }
+  },
+  {
+    "match": {
+      "date": "2026-10-06",
+      "weekday": "一",
+      "scope": "extra",
+      "jc": null,
+      "competition": { "name": "西甲", "type": "联赛", "stage": "8" },
+      "kickoff_hour": 4,
+      "teams": { "home": "非竞彩示例主", "away": "非竞彩示例客" },
+      "ids": {}
+    },
+    "result": null,
+    "stats": { "popularity_diff": null, "support_proxy_odds": null },
+    "odds": { "asian": {} },
+    "meta": {
+      "source_file": "demo/json-v2-sample.json",
+      "month": "2610",
+      "schema_version": "2.0",
+      "pipeline": "api_v1",
+      "note": "extra 不进默认分析；jc 必须为 null"
+    }
+  }
+]

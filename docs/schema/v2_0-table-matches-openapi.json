@@ -1,0 +1,3105 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "比赛分析工具 Local API",
+    "version": "0.3.19",
+    "description": "Fragment: GET /table/matches (API 0.3.19). Generated from FastAPI /openapi.json. Doc: v2_0-table-matches-api.md"
+  },
+  "paths": {
+    "/table/matches": {
+      "get": {
+        "tags": [
+          "table"
+        ],
+        "summary": "数据表页批量平铺（只读）",
+        "operationId": "table_matches_table_matches_get",
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "竞彩日起 YYYY-MM-DD；缺省 = date_to − 6 天",
+              "title": "Date From"
+            },
+            "description": "竞彩日起 YYYY-MM-DD；缺省 = date_to − 6 天"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "竞彩日止 YYYY-MM-DD；缺省 = 库内 ≤ as_of 日的最大竞彩日",
+              "title": "Date To"
+            },
+            "description": "竞彩日止 YYYY-MM-DD；缺省 = 库内 ≤ as_of 日的最大竞彩日"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(jc|ext|all|jingcai|extra)$",
+              "description": "jc=竞彩(scope=jingcai)｜ext=非竞彩(scope=extra)｜all",
+              "default": "jc",
+              "title": "Scope"
+            },
+            "description": "jc=竞彩(scope=jingcai)｜ext=非竞彩(scope=extra)｜all"
+          },
+          {
+            "name": "strategy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "predictions.strategy；默认 V3",
+              "default": "CFFXDJ_5_V3",
+              "title": "Strategy"
+            },
+            "description": "predictions.strategy；默认 V3"
+          },
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "const": "rule",
+              "type": "string",
+              "description": "快照通道；目前仅 rule（*_real 自动取 actual t8/t1）",
+              "default": "rule",
+              "title": "Channel"
+            },
+            "description": "快照通道；目前仅 rule（*_real 自动取 actual t8/t1）"
+          },
+          {
+            "name": "include_live",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "none",
+                "rule_1110",
+                "all"
+              ],
+              "type": "string",
+              "description": "none=live 空数组｜rule_1110=只给竞彩日 11:10 as-of 即时盘｜all=全部即时（含 rule_1110）",
+              "default": "none",
+              "title": "Include Live"
+            },
+            "description": "none=live 空数组｜rule_1110=只给竞彩日 11:10 as-of 即时盘｜all=全部即时（含 rule_1110）"
+          },
+          {
+            "name": "settlement_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "缺省 = 现网默认 ah_v4_water_midpoint；可选 ah_v4_macau_actual_or_095",
+              "title": "Settlement Version"
+            },
+            "description": "缺省 = 现网默认 ah_v4_water_midpoint；可选 ah_v4_macau_actual_or_095"
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "截止时刻（ISO；无时区按 +08:00）；缺省/未来 = now",
+              "title": "As Of"
+            },
+            "description": "截止时刻（ISO；无时区按 +08:00）；缺省/未来 = now"
+          },
+          {
+            "name": "baseline_window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 3650,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "返还率基准滚动窗口（天）；缺省 = 本场竞彩日之前全部（hl_v0 未定）",
+              "title": "Baseline Window Days"
+            },
+            "description": "返还率基准滚动窗口（天）；缺省 = 本场竞彩日之前全部（hl_v0 未定）"
+          },
+          {
+            "name": "baseline_min_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "description": "基准最少样本场数；不足返回 null",
+              "default": 20,
+              "title": "Baseline Min N"
+            },
+            "description": "基准最少样本场数；不足返回 null"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "nested",
+                "flat"
+              ],
+              "type": "string",
+              "description": "nested | flat（AG Grid 直接用）",
+              "default": "nested",
+              "title": "Format"
+            },
+            "description": "nested | flat（AG Grid 直接用）"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "format=nested 的结构；format=flat 时 items 为扁平字典（键 = 嵌套路径用 _ 连接）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Table Matches Table Matches Get",
+                  "$ref": "#/components/schemas/TableResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AhBook": {
+        "properties": {
+          "open": {
+            "$ref": "#/components/schemas/AhCell"
+          },
+          "mid": {
+            "$ref": "#/components/schemas/AhCell"
+          },
+          "close": {
+            "$ref": "#/components/schemas/AhCell"
+          },
+          "mid_real": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AhCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "close_real": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AhCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_prematch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "open",
+          "mid",
+          "close"
+        ],
+        "title": "AhBook"
+      },
+      "AhCell": {
+        "properties": {
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "home_water": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Water"
+          },
+          "away_water": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Water"
+          },
+          "water_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "actual",
+                  "tier_midpoint"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Source"
+          },
+          "water_move_eligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Move Eligible"
+          },
+          "tier_cross": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TierCross"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tier_cross_mid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Cross Mid"
+          },
+          "fallback_p25": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback P25"
+          },
+          "fallback_n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback N"
+          },
+          "fallback_hl_eligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Hl Eligible"
+          },
+          "water_censored": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Censored"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Reason"
+          },
+          "minutes_since_open": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Since Open"
+          },
+          "return_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate"
+          },
+          "return_rate_baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate Baseline"
+          },
+          "return_rate_baseline_n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate Baseline N"
+          },
+          "return_rate_dev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate Dev"
+          },
+          "baseline_method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "empirical",
+                  "fixed_fallback"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Method"
+          },
+          "open_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Basis"
+          },
+          "open_basis_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Basis Reason"
+          },
+          "earliest_ts_quote_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Ts Quote At"
+          },
+          "ts_inferred": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts Inferred"
+          },
+          "usable_at_mid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usable At Mid"
+          },
+          "usable_at_close": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usable At Close"
+          },
+          "unusable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unusable Reason"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "AhCell"
+      },
+      "ApiClosing": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "const": "api_closing",
+            "title": "Label",
+            "default": "api_closing"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "default": "收盘（时间未知）"
+          },
+          "home": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          },
+          "draw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draw"
+          },
+          "away": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "default": false
+          },
+          "quote_time_known": {
+            "type": "boolean",
+            "title": "Quote Time Known",
+            "default": false
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "basis": {
+            "type": "string",
+            "title": "Basis",
+            "default": "api_closing"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "reference_only": {
+            "type": "boolean",
+            "title": "Reference Only",
+            "default": true
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "ApiClosing"
+      },
+      "BasePhase": {
+        "properties": {
+          "pinnacle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Triple"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "multi_avg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsensusProbs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "BasePhase"
+      },
+      "ConsensusProbs": {
+        "properties": {
+          "home": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          },
+          "draw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draw"
+          },
+          "away": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          },
+          "n_books": {
+            "type": "integer",
+            "title": "N Books"
+          },
+          "n_avg": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Avg"
+          },
+          "books": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Books"
+          },
+          "includes_self": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includes Self"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "n_books",
+          "books"
+        ],
+        "title": "ConsensusProbs"
+      },
+      "DbMeta": {
+        "properties": {
+          "db": {
+            "type": "string",
+            "enum": [
+              "live",
+              "v2d3"
+            ],
+            "title": "Db"
+          },
+          "promoted": {
+            "type": "boolean",
+            "title": "Promoted"
+          },
+          "readonly": {
+            "type": "boolean",
+            "title": "Readonly",
+            "default": false
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "db",
+          "promoted"
+        ],
+        "title": "DbMeta"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InstantAlt": {
+        "properties": {
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "water": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water"
+          },
+          "tick_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tick At"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "InstantAlt"
+      },
+      "JcCell": {
+        "properties": {
+          "home": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          },
+          "draw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draw"
+          },
+          "away": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "default": false
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Reason"
+          },
+          "water_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "actual",
+                  "tier_midpoint"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Source"
+          },
+          "open_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Basis"
+          },
+          "open_basis_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Basis Reason"
+          },
+          "earliest_ts_quote_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Ts Quote At"
+          },
+          "ts_inferred": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts Inferred"
+          },
+          "usable_at_mid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usable At Mid"
+          },
+          "usable_at_close": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usable At Close"
+          },
+          "unusable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unusable Reason"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "JcCell"
+      },
+      "LiveEntry": {
+        "properties": {
+          "book": {
+            "type": "string",
+            "title": "Book"
+          },
+          "market": {
+            "type": "string",
+            "title": "Market"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "home_water": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Water"
+          },
+          "away_water": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Water"
+          },
+          "home": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          },
+          "draw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draw"
+          },
+          "away": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          },
+          "over_water": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Over Water"
+          },
+          "under_water": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Under Water"
+          },
+          "water_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Source"
+          },
+          "is_inplay": {
+            "type": "boolean",
+            "title": "Is Inplay",
+            "default": false
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "odds_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odds Source"
+          },
+          "capture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "fetch_lag_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetch Lag Min"
+          },
+          "merge_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Rule"
+          },
+          "alt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstantAlt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "instant_src_diff": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instant Src Diff"
+          },
+          "minutes_before_kickoff": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Before Kickoff"
+          },
+          "stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "book",
+          "market"
+        ],
+        "title": "LiveEntry"
+      },
+      "MatchInfo": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "match_pk": {
+            "type": "integer",
+            "title": "Match Pk"
+          },
+          "jc_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jc Id"
+          },
+          "jc_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jc No"
+          },
+          "jingcai_date": {
+            "type": "string",
+            "title": "Jingcai Date"
+          },
+          "kickoff_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff At"
+          },
+          "kickoff_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Hour"
+          },
+          "kickoff_minute_known": {
+            "type": "boolean",
+            "title": "Kickoff Minute Known",
+            "default": false
+          },
+          "kickoff_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Source"
+          },
+          "kickoff_placeholder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Placeholder"
+          },
+          "kickoff_jc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Jc"
+          },
+          "kickoff_jc_conflict": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Jc Conflict"
+          },
+          "postponed": {
+            "type": "boolean",
+            "title": "Postponed",
+            "default": false
+          },
+          "kickoff_original": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Original"
+          },
+          "kickoff_actual": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Actual"
+          },
+          "postponed_announced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postponed Announced At"
+          },
+          "postpone_ts_unknown": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postpone Ts Unknown"
+          },
+          "postpone_void_check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postpone Void Check"
+          },
+          "postpone_delay_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postpone Delay Minutes"
+          },
+          "manual_review": {
+            "type": "boolean",
+            "title": "Manual Review",
+            "default": false
+          },
+          "manual_review_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Review Reason"
+          },
+          "daily_check": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Daily Check",
+            "default": []
+          },
+          "instant_src_diff": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instant Src Diff"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "league": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "League"
+          },
+          "league_canonical": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "League Canonical"
+          },
+          "competition_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competition Type"
+          },
+          "home_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team"
+          },
+          "away_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team"
+          },
+          "home_team_canonical": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Canonical"
+          },
+          "away_team_canonical": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Canonical"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "match_id",
+          "match_pk",
+          "jingcai_date",
+          "scope"
+        ],
+        "title": "MatchInfo"
+      },
+      "Prediction": {
+        "properties": {
+          "ledger_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Note"
+          },
+          "ledger_note_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Note Reason"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy"
+          },
+          "settle_book": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settle Book"
+          },
+          "rationale": {
+            "items": {},
+            "type": "array",
+            "title": "Rationale",
+            "default": []
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "stake": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stake"
+          },
+          "stake_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stake Rule"
+          },
+          "produced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Produced At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "message_sent_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Sent At"
+          },
+          "produced_before_kickoff": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Produced Before Kickoff"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "Prediction"
+      },
+      "Result": {
+        "properties": {
+          "home_goals": {
+            "type": "integer",
+            "title": "Home Goals"
+          },
+          "away_goals": {
+            "type": "integer",
+            "title": "Away Goals"
+          },
+          "total_goals": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Goals"
+          },
+          "score": {
+            "type": "string",
+            "title": "Score"
+          },
+          "wdl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wdl"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "home_goals",
+          "away_goals",
+          "score"
+        ],
+        "title": "Result"
+      },
+      "Schedule": {
+        "properties": {
+          "phase_exception": {
+            "type": "boolean",
+            "title": "Phase Exception"
+          },
+          "phase_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Target"
+          },
+          "kickoff_minute_known": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Minute Known"
+          },
+          "kickoff_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Source"
+          },
+          "kickoff_placeholder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Placeholder"
+          },
+          "exception_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Rule"
+          },
+          "kickoff_for_exception": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff For Exception"
+          },
+          "postpone_target_basis": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postpone Target Basis"
+          },
+          "kickoff_check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kickoff Check"
+          },
+          "open_target_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Target Time"
+          },
+          "mid_target_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mid Target Time"
+          },
+          "close_target_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close Target Time"
+          },
+          "mid_real_target_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mid Real Target Time"
+          },
+          "close_real_target_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close Real Target Time"
+          },
+          "live_rule_1110_target_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Rule 1110 Target Time"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "phase_exception",
+          "source"
+        ],
+        "title": "Schedule"
+      },
+      "Settlement": {
+        "properties": {
+          "settlement_version": {
+            "type": "string",
+            "title": "Settlement Version"
+          },
+          "settle_book": {
+            "type": "string",
+            "title": "Settle Book"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "juice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Juice"
+          },
+          "juice_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Juice Source"
+          },
+          "juice_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Juice Reason"
+          },
+          "stake_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stake Units"
+          },
+          "stake_units_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stake Units Source"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "win",
+              "win_half",
+              "push",
+              "lose_half",
+              "lose",
+              "no_bet"
+            ],
+            "title": "Code"
+          },
+          "pnl_units": {
+            "type": "number",
+            "title": "Pnl Units"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "backend"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "settlement_version",
+          "settle_book",
+          "code",
+          "pnl_units"
+        ],
+        "title": "Settlement"
+      },
+      "TableResponse": {
+        "properties": {
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DbMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "api_version": {
+            "type": "string",
+            "title": "Api Version"
+          },
+          "config_version": {
+            "type": "string",
+            "title": "Config Version"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "as_of": {
+            "type": "string",
+            "title": "As Of"
+          },
+          "as_of_requested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Requested"
+          },
+          "date_from": {
+            "type": "string",
+            "title": "Date From"
+          },
+          "date_to": {
+            "type": "string",
+            "title": "Date To"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "include_live": {
+            "type": "string",
+            "title": "Include Live"
+          },
+          "settlement_version": {
+            "type": "string",
+            "title": "Settlement Version"
+          },
+          "books": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Books"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          },
+          "data_sources": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data Sources"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "daily_check_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Check Summary"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TableRow"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "api_version",
+          "config_version",
+          "format",
+          "as_of",
+          "date_from",
+          "date_to",
+          "scope",
+          "strategy",
+          "channel",
+          "include_live",
+          "settlement_version",
+          "books",
+          "config",
+          "data_sources",
+          "total",
+          "limit",
+          "offset",
+          "count",
+          "items"
+        ],
+        "title": "TableResponse"
+      },
+      "TableRow": {
+        "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "match": {
+            "$ref": "#/components/schemas/MatchInfo"
+          },
+          "phase_exception": {
+            "type": "boolean",
+            "title": "Phase Exception"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/Schedule"
+          },
+          "ah": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AhBook"
+            },
+            "type": "object",
+            "title": "Ah"
+          },
+          "x1x2": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/X1x2Book"
+            },
+            "type": "object",
+            "title": "X1X2"
+          },
+          "x1x2_base": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BasePhase"
+            },
+            "type": "object",
+            "title": "X1X2 Base"
+          },
+          "multi_avg_prob": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsensusProbs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jc_1x2": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JcCell"
+            },
+            "type": "object",
+            "title": "Jc 1X2"
+          },
+          "live": {
+            "items": {
+              "$ref": "#/components/schemas/LiveEntry"
+            },
+            "type": "array",
+            "title": "Live"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Prediction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prediction_hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction Hidden Reason"
+          },
+          "produced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Produced At"
+          },
+          "as_of": {
+            "type": "string",
+            "title": "As Of"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Result"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result_hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Hidden Reason"
+          },
+          "hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Reason"
+          },
+          "settlement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Settlement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settlement_hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Hidden Reason"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "match_id",
+          "match",
+          "phase_exception",
+          "schedule",
+          "ah",
+          "x1x2",
+          "x1x2_base",
+          "jc_1x2",
+          "live",
+          "as_of"
+        ],
+        "title": "TableRow"
+      },
+      "TierCross": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "from": {
+            "$ref": "#/components/schemas/TierPoint"
+          },
+          "to": {
+            "$ref": "#/components/schemas/TierPoint"
+          },
+          "sides": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sides"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "TierCross"
+      },
+      "TierPoint": {
+        "properties": {
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "home": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          },
+          "away": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "TierPoint"
+      },
+      "Triple": {
+        "properties": {
+          "home": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          },
+          "draw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draw"
+          },
+          "away": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "Triple"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "X1x2Book": {
+        "properties": {
+          "open": {
+            "$ref": "#/components/schemas/X1x2Cell"
+          },
+          "mid": {
+            "$ref": "#/components/schemas/X1x2Cell"
+          },
+          "close": {
+            "$ref": "#/components/schemas/X1x2Cell"
+          },
+          "mid_real": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/X1x2Cell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "close_real": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/X1x2Cell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_prematch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "api_closing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiClosing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "open",
+          "mid",
+          "close"
+        ],
+        "title": "X1x2Book"
+      },
+      "X1x2Cell": {
+        "properties": {
+          "home": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          },
+          "draw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draw"
+          },
+          "away": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "default": false
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "hidden_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden Reason"
+          },
+          "minutes_since_open": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Since Open"
+          },
+          "return_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate"
+          },
+          "return_rate_baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate Baseline"
+          },
+          "return_rate_baseline_n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate Baseline N"
+          },
+          "return_rate_dev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate Dev"
+          },
+          "kelly": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Triple"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kelly_base": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pinnacle",
+                  "multi_avg"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kelly Base"
+          },
+          "kelly_base_n_books": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kelly Base N Books"
+          },
+          "baseline_method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "empirical",
+                  "fixed_fallback"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Method"
+          },
+          "kelly_multi_avg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Triple"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "multi_avg_n_books": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multi Avg N Books"
+          },
+          "n_avg": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Avg"
+          },
+          "water_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "actual",
+                  "tier_midpoint"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Source"
+          },
+          "open_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Basis"
+          },
+          "open_basis_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Basis Reason"
+          },
+          "earliest_ts_quote_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Ts Quote At"
+          },
+          "ts_inferred": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts Inferred"
+          },
+          "usable_at_mid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usable At Mid"
+          },
+          "usable_at_close": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usable At Close"
+          },
+          "unusable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unusable Reason"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "X1x2Cell"
+      }
+    }
+  }
+}

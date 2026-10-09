@@ -1,0 +1,708 @@
+openapi: 3.0.3
+info:
+  # 0.3.2: MatchListItem.result（与详情同结构，可 null）
+  title: 比赛分析工具 Local API
+  version: 0.3.2
+  description: |
+    本地单机 API，对齐 作者的私有分析仓 月度 JSON 五段 + prediction。
+    主清单默认 scope=jingcai；SQLite 见 schema/v1_sqlite.sql → v1_1_prediction_legs.sql → v1_2_bankroll_alias_kickoff.sql。
+    v0.2：多玩法 prediction_legs + /matches/{id}/predictions + /dispatch/pending。
+    v0.2.2：/dispatch/pending 主列表只认 collect_at±30min；补发需显式 include_overdue=true。
+    v0.3.0（schema v1.2）：
+      - Match 增 kickoff_at（列，+08:00 到分钟）、kickoff_minute_known、home_team_id/away_team_id/league_id（可空）
+      - Prediction / PredictionLeg 增注额字段（stake=整数「份」，可空；金额不入库）
+      - /bankroll/config、/bankroll/config/{key}、/bankroll/snapshots、/bankroll/calc
+    所有新增字段均为**追加**；旧字段语义不变（亚盘 CFFXDJ_5_V3 默认不动）。
+servers:
+  - url: http://127.0.0.1:8787
+    description: local
+
+paths:
+  /matches:
+    get:
+      summary: 赛程列表（默认竞彩日主清单）
+      operationId: listMatches
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: 竞彩日 YYYY-MM-DD
+          schema: { type: string, format: date }
+        - name: scope
+          in: query
+          required: false
+          description: jingcai（默认）| extra | all
+          schema: { type: string, enum: [jingcai, extra, all], default: jingcai }
+      responses:
+        "200":
+          description: 按 竞彩日 → kickoff_hour → jc.no 排序
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [date, scope, items]
+                properties:
+                  date: { type: string, format: date }
+                  scope: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/MatchListItem" }
+
+  /matches/{id}:
+    get:
+      summary: 单场详情（match/result/stats/odds/meta）
+      operationId: getMatch
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      responses:
+        "200":
+          description: JSON v2 五段（不含 prediction，见独立接口）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchDetail" }
+        "404":
+          description: not found
+
+  /matches/{id}/odds:
+    get:
+      summary: 单场盘口（odds 段，含 asian / euro / jc / jc_hhad / _snap）
+      operationId: getMatchOdds
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      responses:
+        "200":
+          description: odds object
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Odds" }
+        "404":
+          description: not found
+
+  /matches/{id}/prediction:
+    get:
+      summary: 预测结论
+      operationId: getMatchPrediction
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+        - name: strategy
+          in: query
+          required: false
+          description: 缺省返回默认策略（如 CFFXDJ_5_V3）
+          schema: { type: string }
+      responses:
+        "200":
+          description: prediction
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Prediction" }
+        "404":
+          description: 无预测或不存在
+
+  /matches/{id}/predictions:
+    get:
+      summary: 单场预测合集（旧 AH + 多玩法 legs）
+      operationId: getMatchPredictions
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+        - name: strategy
+          in: query
+          required: false
+          description: AH 默认策略（如 CFFXDJ_5_V3）；legs 返回该场全部
+          schema: { type: string }
+      responses:
+        "200":
+          description: ah 可为 null；legs 可为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchPredictionsBundle" }
+        "404":
+          description: match not found
+
+  /dispatch/pending:
+    get:
+      summary: 临盘/中盘待发场次（对齐 calc_collection_times）
+      operationId: listDispatchPending
+      parameters:
+        - name: window
+          in: query
+          required: false
+          description: >
+            close=临盘采集点 | mid=中盘采集点。
+            凌晨场(0–10)：jingcai_date 16:00 / 23:00；
+            其余：kickoff−8h / kickoff−1h。
+          schema: { type: string, enum: [close, mid], default: close }
+        - name: scope
+          in: query
+          required: false
+          schema: { type: string, enum: [jingcai, extra, all], default: jingcai }
+        - name: include_overdue
+          in: query
+          required: false
+          description: >
+            待发判定（v0.2.2 起）：
+            主列表（默认 false）= abs(now−collect_at) ≤ 30min；
+            true 时额外纳入补发兜底 collect_at ≤ now ≤ kickoff。
+            日用派单默认只打主列表，不要把整天未开赛堆进待发。
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: 按 minutes_to_collect、minutes_to_kick 升序
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DispatchPendingResponse" }
+
+
+  /bankroll/config:
+    get:
+      summary: 读资金/注额配置（含本金占位 TODO 列表）
+      operationId: getBankrollConfig
+      responses:
+        "200":
+          description: 全部配置键
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BankrollConfigResponse" }
+
+  /bankroll/config/{key}:
+    put:
+      summary: 整键替换一个配置值（非合并）
+      operationId: putBankrollConfig
+      description: >
+        已知键：stats_initial_bankroll | monday_base_bankroll | calculator_bankroll（value.amount: number≥0|null）；
+        unit_definition（unit_fraction ∈ (0,0.1]，base_key）；stake_caps（per_match/per_day 整数≥0，mode clamp|warn）；
+        stake_amount_limits（min_stake_amount ≥0，max_stake_pct_of_remaining ∈ (0,1]）。
+        种子：stats_initial_bankroll = {amount: 10000, currency: CNY}；
+        stake_amount_limits = {min_stake_amount: 50, max_stake_pct_of_remaining: 0.5, currency: CNY}；
+        monday_base_bankroll / calculator_bankroll 初始 amount=null。
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [stats_initial_bankroll, monday_base_bankroll, calculator_bankroll, unit_definition, stake_caps, stake_amount_limits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties:
+                value: { type: object, additionalProperties: true }
+                note: { type: string, nullable: true, description: 缺省保留原 note }
+            example: { value: { amount: 20000 } }
+      responses:
+        "200":
+          description: 写入后的键
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      key: { type: string }
+                  - $ref: "#/components/schemas/BankrollConfigEntry"
+        "404": { description: 未知键 }
+        "422": { description: 值校验失败 }
+
+  /bankroll/snapshots:
+    post:
+      summary: 用户报账户余额（可同步为周一基数）
+      operationId: postBankrollSnapshot
+      description: >
+        重算不建审计表（拍板 3）：记一条 snapshot，再由分析师按新基数重算；
+        预测行改份时写 updated_at。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [balance]
+              properties:
+                balance: { type: number, minimum: 0 }
+                reported_at: { type: string, format: date-time, description: 缺省 now；无时区按 +08:00 }
+                source: { type: string, default: user_report }
+                note: { type: string, nullable: true }
+                set_as_monday_base:
+                  type: boolean
+                  default: false
+                  description: "true 时写 monday_base_bankroll = {amount: balance, as_of, snapshot_id}"
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot: { $ref: "#/components/schemas/BankrollSnapshot" }
+                  monday_base_bankroll:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+
+  /bankroll/calc:
+    post:
+      summary: 注额计算器（份 → 金额；带单场/单日上限）
+      operationId: calcBankroll
+      description: >
+        基数：请求 bankroll 优先；否则 base_key（缺省 unit_definition.base_key=monday_base_bankroll）配置的 amount；
+        未显式传 base_key 且周一基数为空时回退 stats_initial_bankroll（10000 CNY）；都没有 → 422。
+        unit_amount = round(base × unit_fraction, 2)；amount_from_units = round(份 × unit_amount, 2)。
+        份数来源：条目 stake_units 优先；否则按 (match_id, strategy 缺省 CFFXDJ_5_V3) 查 predictions.stake。
+        上限（stake_caps，默认单场 3 / 单竞彩日 10）：
+        clamp（默认）= ①单条截断到单场上限 ②同场多条合计超限按比例缩放向下取整
+        ③同竞彩日合计超限按比例缩放向下取整；被改的条目 capped=true + cap_reasons。
+        金额上下限（stake_amount_limits，在份数上限之后执行；份数 null/0 不参与）：
+        ①amount_from_units < min_stake_amount(50) → 抬到 50，raised=true，reason min_stake_raised；
+        ②amount > 当前剩余资金 × max_stake_pct_of_remaining(0.5) → 截到上限，capped_amount=true，reason max_pct_of_remaining；
+        ③截完仍 < 50（剩余资金太少）→ amount=0，reason skipped_below_min（不下注）。
+        当前剩余资金 = 请求 remaining_bankroll → 最新 snapshot balance → 基数；同一请求内按 items 顺序逐注扣减。
+        warn = 份数与金额都不改，只写 warnings（下限抬升仍执行并标 raised）。只算不写库。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BankrollCalcRequest" }
+            example:
+              bankroll: 10000
+              items:
+                - { match_id: "2026-10-06|一003", stake_units: 2 }
+                - { match_id: "2026-10-06|一005" }
+      responses:
+        "200":
+          description: 计算结果
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BankrollCalcResponse" }
+        "422": { description: 基数本金未配置且未传 bankroll，或参数非法（stake_units 必须整数≥0） }
+
+
+components:
+  parameters:
+    MatchId:
+      name: id
+      in: path
+      required: true
+      description: match_uid 或内部数字 id（实现二选一，响应里都会回 match_uid）
+      schema: { type: string }
+
+  schemas:
+    MatchListItem:
+      type: object
+      required: [id, match]
+      properties:
+        id: { type: string, description: match_uid }
+        match: { $ref: "#/components/schemas/Match" }
+        has_prediction: { type: boolean }
+        direction:
+          type: string
+          nullable: true
+          enum: [主, 客, 不下注, null]
+        result:
+          nullable: true
+          description: >
+            v0.3.2：与详情 GET /matches/{id} 的 result 同结构（build_result）；
+            无赛果为 null。至少含 home_goals/away_goals；另有 total_goals/wdl。
+          oneOf:
+            - $ref: "#/components/schemas/Result"
+
+    MatchDetail:
+      type: object
+      required: [match, result, stats, odds, meta]
+      properties:
+        match: { $ref: "#/components/schemas/Match" }
+        result:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/Result"
+        stats: { $ref: "#/components/schemas/Stats" }
+        odds: { $ref: "#/components/schemas/Odds" }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    Match:
+      type: object
+      required: [date, scope, teams]
+      properties:
+        date: { type: string, format: date, description: 竞彩日 }
+        weekday: { type: string }
+        scope: { type: string, enum: [jingcai, extra] }
+        jc:
+          nullable: true
+          oneOf:
+            - type: object
+              required: [id, "no"]
+              properties:
+                id: { type: string, example: "一003" }
+                weekday: { type: string }
+                "no": { type: string, example: "003" }
+        competition:
+          type: object
+          properties:
+            name: { type: string }
+            type: { type: string }
+            stage: { type: string }
+        kickoff_hour: { type: integer, minimum: 0, maximum: 23, description: 保留，供排序/旧脚本 }
+        kickoff_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            v1.2：优先 match_meta.extras.kickoff_at，否则 matches.kickoff_at 列。
+            ISO-8601 +08:00，精确到分钟。旧数据由 jingcai_date+kickoff_hour 合成（0–10 点记次日）。
+          example: "2026-10-07T03:15:00+08:00"
+        kickoff_minute_known:
+          type: boolean
+          description: true=kickoff_at 分钟可信；false=仅整点占位（历史数据）
+        teams:
+          type: object
+          required: [home, away]
+          description: 过渡期仍为文本（可存中文规范名）
+          properties:
+            home: { type: string }
+            away: { type: string }
+        home_team_id: { type: integer, nullable: true, description: "teams.id；逐步回填" }
+        away_team_id: { type: integer, nullable: true, description: "teams.id；逐步回填" }
+        league_id: { type: integer, nullable: true, description: "leagues.id；逐步回填" }
+        ids:
+          type: object
+          additionalProperties: true
+
+    Result:
+      type: object
+      properties:
+        home_goals: { type: integer }
+        away_goals: { type: integer }
+        total_goals: { type: integer }
+        wdl: { type: string, enum: [胜, 平, 负] }
+
+    Stats:
+      type: object
+      additionalProperties: true
+      properties:
+        recent: { type: object, additionalProperties: true }
+        h2h: { type: object, additionalProperties: true }
+        rank:
+          type: object
+          properties:
+            home: { type: integer, nullable: true }
+            away: { type: integer, nullable: true }
+        popularity_diff: { type: number, nullable: true }
+        support_proxy_odds: { type: number, nullable: true }
+        injury: { nullable: true }
+        weather: { nullable: true }
+
+    AsianLineFull:
+      type: object
+      properties:
+        home_water: { type: number, nullable: true }
+        handicap: { type: number, nullable: true }
+        away_water: { type: number, nullable: true }
+
+    AsianPhases:
+      type: object
+      description: open/mid/close；macau 仓库旧口径可为纯数字盘口
+      properties:
+        open:
+          nullable: true
+          oneOf:
+            - type: number
+            - $ref: "#/components/schemas/AsianLineFull"
+        mid:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/AsianLineFull"
+        close:
+          nullable: true
+          oneOf:
+            - type: number
+            - $ref: "#/components/schemas/AsianLineFull"
+
+    Odds:
+      type: object
+      properties:
+        asian:
+          type: object
+          properties:
+            macau: { $ref: "#/components/schemas/AsianPhases" }
+            crown: { $ref: "#/components/schemas/AsianPhases" }
+            william: { $ref: "#/components/schemas/AsianPhases" }
+            bet365: { $ref: "#/components/schemas/AsianPhases" }
+          additionalProperties:
+            $ref: "#/components/schemas/AsianPhases"
+        euro_home_win:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              open: { type: number, nullable: true }
+              close: { type: number, nullable: true }
+        jc_home_win:
+          type: object
+          properties:
+            open: { type: number, nullable: true }
+            close: { type: number, nullable: true }
+        jc_hhad:
+          type: object
+          properties:
+            open: { $ref: "#/components/schemas/JcHhadLine" }
+            mid: { $ref: "#/components/schemas/JcHhadLine" }
+            close: { $ref: "#/components/schemas/JcHhadLine" }
+        _snap:
+          type: object
+          properties:
+            open_at: { type: string, format: date-time, nullable: true }
+            mid_at: { type: string, format: date-time, nullable: true }
+            close_at: { type: string, format: date-time, nullable: true }
+
+    JcHhadLine:
+      type: object
+      nullable: true
+      properties:
+        goal_line: { type: string, description: 竞彩让球线，如 "-1" }
+        home: { type: number }
+        draw: { type: number }
+        away: { type: number }
+
+    Meta:
+      type: object
+      properties:
+        source_file: { type: string }
+        month: { type: string, example: "2610" }
+        schema_version: { type: string, example: "2.0" }
+        pipeline: { type: string }
+        note: { type: string }
+
+    Prediction:
+      type: object
+      required: [direction, strategy, settle_book, rationale]
+      properties:
+        direction: { type: string, enum: [主, 客, 不下注] }
+        strategy: { type: string, example: CFFXDJ_5_V3 }
+        settle_book: { type: string, example: macau_close }
+        rationale:
+          type: array
+          items: { type: string }
+        confidence: { type: number, nullable: true }
+        stake: { $ref: "#/components/schemas/StakeUnits" }
+        stake_rule: { type: string, nullable: true, example: simplified_s5_2_s3_1 }
+        produced_at: { type: string, description: "SQLite datetime('now')，UTC" }
+        updated_at: { type: string, nullable: true, description: 重算/改份时写；null=未改过 }
+        message_sent_at: { type: string, nullable: true, description: 通知派单时间；入库≠已发 }
+
+    StakeUnits:
+      type: integer
+      minimum: 0
+      nullable: true
+      description: >
+        整数「份」；null=只给方向/观察、不建议注额。金额不入库，只由 POST /bankroll/calc 计算：
+        1 份 = 基数本金 × unit_fraction（默认 monday_base_bankroll × 0.005）。
+
+    MatchPredictionsBundle:
+      type: object
+      required: [ah, legs]
+      properties:
+        ah:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/Prediction"
+        legs:
+          type: array
+          items: { $ref: "#/components/schemas/PredictionLeg" }
+
+    PredictionLeg:
+      type: object
+      required: [id, market, settle_book]
+      properties:
+        id: { type: integer }
+        market: { type: string, enum: [ah, ou, 1x2, jc_hhad] }
+        side: { type: string, nullable: true }
+        line: { type: number, nullable: true }
+        line_text: { type: string, nullable: true }
+        stake: { $ref: "#/components/schemas/StakeUnits" }
+        stake_rule: { type: string, nullable: true, example: kelly25_pL80_cap3 }
+        p_used: { type: number, nullable: true, description: 凯利用的概率（审计） }
+        f_star: { type: number, nullable: true, description: 全凯利 f*（审计） }
+        status:
+          type: string
+          enum: [active, shadow, paper, pilot, prod, retired]
+          default: active
+        strategy: { type: string, nullable: true }
+        settle_book: { type: string, example: macau_close }
+        rationale:
+          type: array
+          items: { type: string }
+        confidence: { type: number, nullable: true }
+        gap: { type: object, nullable: true, additionalProperties: true }
+        produced_at: { type: string }
+        updated_at: { type: string, nullable: true }
+
+    DispatchPendingItem:
+      type: object
+      required: [id, match, minutes_to_kick, has_legs]
+      properties:
+        id: { type: string }
+        match: { $ref: "#/components/schemas/Match" }
+        kickoff_at_resolved: { type: string, format: date-time }
+        mid_collect_at: { type: string, format: date-time }
+        close_collect_at: { type: string, format: date-time }
+        collect_at: { type: string, format: date-time, description: 本 window 对应的采集点 }
+        collection_schedule:
+          type: object
+          properties:
+            mid_time: { type: string, example: "16:00" }
+            final_time: { type: string, example: "23:00" }
+        minutes_to_kick: { type: number }
+        minutes_to_collect: { type: number }
+        has_legs: { type: boolean }
+        leg_count: { type: integer }
+
+    DispatchPendingResponse:
+      type: object
+      required: [window, scope, now, items]
+      properties:
+        window: { type: string, enum: [close, mid] }
+        scope: { type: string }
+        include_overdue: { type: boolean }
+        now: { type: string, format: date-time }
+        approximation: { type: object, additionalProperties: true }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DispatchPendingItem" }
+
+    BankrollConfigEntry:
+      type: object
+      properties:
+        value: { type: object, additionalProperties: true }
+        updated_at: { type: string, description: "SQLite datetime('now')，UTC" }
+        note: { type: string, nullable: true }
+
+    BankrollConfigResponse:
+      type: object
+      required: [items, amount_todo]
+      properties:
+        items:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/BankrollConfigEntry" }
+        amount_todo:
+          type: array
+          items: { type: string }
+          description: amount 仍为 null 的本金键
+        latest_snapshot:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/BankrollSnapshot"
+
+    BankrollSnapshot:
+      type: object
+      properties:
+        id: { type: integer }
+        reported_at: { type: string, format: date-time }
+        balance: { type: number }
+        source: { type: string }
+        note: { type: string, nullable: true }
+        created_at: { type: string }
+
+    BankrollCalcItem:
+      type: object
+      properties:
+        match_id: { type: string, nullable: true, description: match_uid 或内部 id }
+        strategy: { type: string, nullable: true, description: 缺省 CFFXDJ_5_V3 }
+        stake_units: { type: integer, minimum: 0, nullable: true }
+        jingcai_date: { type: string, format: date, nullable: true, description: 无 match_id 时用于单日分组 }
+        label: { type: string, nullable: true }
+
+    BankrollCalcRequest:
+      type: object
+      properties:
+        bankroll: { type: number, exclusiveMinimum: true, minimum: 0, nullable: true }
+        remaining_bankroll:
+          type: number
+          minimum: 0
+          nullable: true
+          description: 当前剩余资金；缺省=最新 snapshot balance，再缺省=基数
+        base_key:
+          type: string
+          nullable: true
+          enum: [stats_initial_bankroll, monday_base_bankroll, calculator_bankroll, null]
+        cap_mode: { type: string, enum: [clamp, warn], nullable: true }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BankrollCalcItem" }
+
+    BankrollCalcResultItem:
+      type: object
+      properties:
+        index: { type: integer }
+        label: { type: string, nullable: true }
+        match_id: { type: string, nullable: true, description: 解析后为 match_uid }
+        strategy: { type: string }
+        jingcai_date: { type: string, nullable: true }
+        stake_source: { type: string, enum: [request, prediction, none] }
+        stake_units_requested: { $ref: "#/components/schemas/StakeUnits" }
+        stake_units: { $ref: "#/components/schemas/StakeUnits" }
+        capped: { type: boolean }
+        cap_reasons:
+          type: array
+          items: { type: string, enum: [per_match, per_match_total, per_day] }
+        amount_from_units: { type: number, nullable: true, description: 份 × unit_amount（未套金额上下限） }
+        amount: { type: number, nullable: true, description: 最终建议金额（已套上下限）；null=无份数 }
+        raised: { type: boolean, description: 被抬到单注下限 }
+        capped_amount: { type: boolean, description: 被剩余资金比例上限截断 }
+        amount_limit_reasons:
+          type: array
+          items: { type: string, enum: [min_stake_raised, max_pct_of_remaining, skipped_below_min] }
+        remaining_before: { type: number, description: 本注前的剩余资金 }
+        error: { type: string, nullable: true, enum: [match not found, prediction not found, null] }
+
+    BankrollCalcResponse:
+      type: object
+      required: [base_bankroll, unit_amount, caps, amount_limits, remaining_bankroll, capped, raised, totals, items]
+      properties:
+        base_bankroll: { type: number }
+        base_source: { type: string, example: "request | config:monday_base_bankroll" }
+        unit_fraction: { type: number, example: 0.005 }
+        unit_amount: { type: number }
+        caps:
+          type: object
+          properties:
+            per_match: { type: integer }
+            per_day: { type: integer }
+            mode: { type: string, enum: [clamp, warn] }
+        amount_limits:
+          type: object
+          properties:
+            min_stake_amount: { type: number, nullable: true, example: 50 }
+            max_stake_pct_of_remaining: { type: number, nullable: true, example: 0.5 }
+            currency: { type: string, nullable: true, example: CNY }
+        remaining_bankroll:
+          type: object
+          properties:
+            start: { type: number }
+            source: { type: string, example: "request | snapshot:3 | base_bankroll" }
+            after: { type: number, description: 扣完本请求全部建议金额后 }
+        capped: { type: boolean, description: 任一条目份数被截断/缩放或金额被比例上限截断 }
+        raised: { type: boolean, description: 任一条目被抬到单注下限 }
+        totals:
+          type: object
+          properties:
+            units: { type: integer }
+            amount: { type: number }
+            by_day:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  units_requested: { type: integer }
+                  units: { type: integer }
+                  amount: { type: number }
+                  capped: { type: boolean }
+                  raised: { type: boolean }
+        warnings:
+          type: array
+          items: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BankrollCalcResultItem" }

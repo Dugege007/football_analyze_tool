@@ -1,0 +1,3 @@
+# 依赖真实 kickoff_drift.json 内容的测试（filename::testname）
+test_hl_v031_0320.py::test_kickoff_drift_info_only_and_asof
+test_hl_v031_0320.py::test_kickoff_drift_not_postpone

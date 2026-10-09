@@ -1,0 +1,15 @@
+{
+  "_synthetic": "合成样例：结构同真实响应，所有值均为虚构",
+  "success": 1,
+  "data": [
+    {
+      "name": "示例1",
+      "slug": "bet365"
+    },
+    {
+      "name": "示例2",
+      "slug": "pinnacle"
+    }
+  ],
+  "_note": "示例"
+}

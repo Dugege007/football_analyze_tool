@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: 比赛分析工具 · 方案编排器 M3（composer / validate 切片）
+  version: 0.3.3
+  description: |
+    schema 切片 v1.4 · 方案编排器 MVP。
+    - 表沿用 M2（strategy_defs / validation_runs / cache）；无新 DDL。
+    - 从 config 模板 compose 写入新 version；状态机命名模板 null / simple_gate；未知键进 extras。
+    - validate：fingerprint 命中复用；未命中写 run + placeholder summary；完整回测后续加厚。
+    - 不改现网亚盘 / CFFXDJ_5_V3 默认。
+servers:
+  - url: http://127.0.0.1:8787
+    description: local
+
+paths:
+  /strategies/templates:
+    get:
+      summary: 列出内置 compose 模板
+      operationId: listStrategyTemplates
+      responses:
+        "200":
+          description: templates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/StrategyTemplate" }
+
+  /strategies/compose:
+    post:
+      summary: 从模板生成并写入 strategy_defs（新 version）
+      operationId: composeStrategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ComposeRequest" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyDef" }
+        "400":
+          description: 未知 template 等
+        "409":
+          description: (strategy_key, version) 已存在
+
+  /strategies/{id}/validate:
+    post:
+      summary: 创建或复用验证 run（fingerprint）
+      description: |
+        计算 run_fingerprint；命中则 reused=true 返回已有 run；
+        未命中则插入 run + placeholder summary，cache 可空。
+      operationId: startStrategyValidateM3
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateRequest" }
+      responses:
+        "202":
+          description: 新建 run（reused=false）或复用（reused=true；实现可仍用 202）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationRunResponse" }
+        "404":
+          description: strategy_def 不存在
+
+components:
+  schemas:
+    StrategyTemplate:
+      type: object
+      required: [name, config]
+      properties:
+        name: { type: string, enum: [default, simple_gate] }
+        description: { type: string }
+        config: { $ref: "#/components/schemas/StrategyConfig" }
+
+    StrategyConfig:
+      type: object
+      description: 最小键；未知顶层键进 extras；state_machine 为命名模板
+      properties:
+        settle_book: { type: string, example: macau_close }
+        juice: { type: number, example: 0.95 }
+        vote:
+          type: object
+          properties:
+            members: { type: array, items: { type: string } }
+            threshold: { type: integer }
+        gates: { type: array, items: { type: object, additionalProperties: true } }
+        stake_rule: { type: string }
+        state_machine:
+          description: "null 或 simple_gate；JSON null 与字符串 null 等价"
+          nullable: true
+          oneOf:
+            - type: string
+              enum: [null, simple_gate]
+            - type: "null"
+        feature_refs: { type: array, items: { type: string } }
+        extras: { type: object, additionalProperties: true }
+      additionalProperties: true
+
+    ComposeRequest:
+      type: object
+      required: [strategy_key, version]
+      properties:
+        strategy_key: { type: string, example: DEMO_COMPOSE }
+        version: { type: string, example: "2026.10.06a" }
+        display_name: { type: string, nullable: true }
+        markets: { type: array, items: { type: string }, default: ["ah"] }
+        template: { type: string, enum: [default, simple_gate], default: default }
+        config_overrides: { type: object, additionalProperties: true }
+        status: { type: string, enum: [draft, active, shadow, archived], default: draft }
+        is_default: { type: boolean, default: false, description: 仅展示；勿用此改现网 V3 默认语义 }
+        notes: { type: string, nullable: true }
+
+    StrategyDef:
+      type: object
+      required: [id, strategy_key, version, markets, config, status]
+      properties:
+        id: { type: integer }
+        strategy_key: { type: string }
+        version: { type: string }
+        display_name: { type: string, nullable: true }
+        markets: { type: array, items: { type: string } }
+        config: { $ref: "#/components/schemas/StrategyConfig" }
+        config_fingerprint: { type: string, nullable: true }
+        status: { type: string }
+        is_default: { type: boolean }
+        notes: { type: string, nullable: true }
+        created_at: { type: string }
+        updated_at: { type: string }
+
+    ValidateRequest:
+      type: object
+      properties:
+        run_label: { type: string, nullable: true }
+        scope: { type: string, default: jingcai }
+        settle_book: { type: string, default: macau_close }
+        shadow: { type: boolean, default: true }
+        params:
+          type: object
+          additionalProperties: true
+          properties:
+            linked_prediction_batch: { type: string, nullable: true }
+
+    ValidationRunResponse:
+      allOf:
+        - $ref: "#/components/schemas/ValidationRun"
+        - type: object
+          properties:
+            reused: { type: boolean, description: fingerprint 命中复用则为 true }
+
+    ValidationRun:
+      type: object
+      required: [id, strategy_def_id, scope, settle_book, status]
+      properties:
+        id: { type: integer }
+        strategy_def_id: { type: integer }
+        run_label: { type: string, nullable: true }
+        scope: { type: string }
+        settle_book: { type: string }
+        params: { type: object, additionalProperties: true }
+        run_fingerprint: { type: string, nullable: true }
+        started_at: { type: string }
+        finished_at: { type: string, nullable: true }
+        status: { type: string, enum: [running, ok, failed] }
+        summary: { type: object, nullable: true, additionalProperties: true }
+        error_text: { type: string, nullable: true }

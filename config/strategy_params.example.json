@@ -1,0 +1,10 @@
+{
+  "_comment": "公开仓的策略/模型调优参数模板：全部为 null 占位。复制为 config/strategy_params.json（已 .gitignore）后填写你自己的值；未填写的方案会拒绝运行（StrategyParamsMissing）。字段含义见 docs/STRATEGY_PARAMS.md。",
+  "S1": {"line_dev_max": null, "upper_water_lo": null, "upper_water_hi": null},
+  "S2": {"dev_abs": null, "close_upper_water_min": null},
+  "N1": {"home_mid_open_lo": null, "home_mid_open_hi": null, "home_high_close": null},
+  "N4": {"dev_abs": null, "open_upper_water_min": null},
+  "S8": {"upper_water_change_max": null, "euro_flat_rel": null, "jc_flat_rel": null, "level_rank_diff_max": null},
+  "N5": {"window_days": null, "half_life_days": null, "min_team_n": null, "min_league_n": null,
+         "min_team_wn": null, "min_league_wn": null, "edge_delta": null}
+}

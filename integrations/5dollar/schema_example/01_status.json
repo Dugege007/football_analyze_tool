@@ -1,0 +1,12 @@
+{
+  "_synthetic": "合成样例：结构同真实响应，所有值均为虚构",
+  "success": 1,
+  "data": {
+    "key": {
+      "prefix": "<redacted>",
+      "environment": "live",
+      "created_at": "2030-01-01T12:00:00+00:00",
+      "expires_at": null
+    }
+  }
+}

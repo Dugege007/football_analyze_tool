@@ -1,0 +1,391 @@
+openapi: 3.0.3
+info:
+  title: 比赛分析工具 Local API
+  version: 0.2.0
+  description: |
+    本地单机 API，对齐 作者的私有分析仓 月度 JSON 五段 + prediction。
+    主清单默认 scope=jingcai；SQLite v1/v1.1 见 schema/v1_sqlite.sql 与 v1_1_prediction_legs.sql。
+    v0.2：多玩法 prediction_legs + /matches/{id}/predictions + /dispatch/pending。
+servers:
+  - url: http://127.0.0.1:8787
+    description: local
+
+paths:
+  /matches:
+    get:
+      summary: 赛程列表（默认竞彩日主清单）
+      operationId: listMatches
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: 竞彩日 YYYY-MM-DD
+          schema: { type: string, format: date }
+        - name: scope
+          in: query
+          required: false
+          description: jingcai（默认）| extra | all
+          schema: { type: string, enum: [jingcai, extra, all], default: jingcai }
+      responses:
+        "200":
+          description: 按 竞彩日 → kickoff_hour → jc.no 排序
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [date, scope, items]
+                properties:
+                  date: { type: string, format: date }
+                  scope: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/MatchListItem" }
+
+  /matches/{id}:
+    get:
+      summary: 单场详情（match/result/stats/odds/meta）
+      operationId: getMatch
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      responses:
+        "200":
+          description: JSON v2 五段（不含 prediction，见独立接口）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchDetail" }
+        "404":
+          description: not found
+
+  /matches/{id}/odds:
+    get:
+      summary: 单场盘口（odds 段，含 asian / euro / jc / jc_hhad / _snap）
+      operationId: getMatchOdds
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      responses:
+        "200":
+          description: odds object
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Odds" }
+        "404":
+          description: not found
+
+  /matches/{id}/prediction:
+    get:
+      summary: 预测结论
+      operationId: getMatchPrediction
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+        - name: strategy
+          in: query
+          required: false
+          description: 缺省返回默认策略（如 CFFXDJ_5_V3）
+          schema: { type: string }
+      responses:
+        "200":
+          description: prediction
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Prediction" }
+        "404":
+          description: 无预测或不存在
+
+  /matches/{id}/predictions:
+    get:
+      summary: 单场预测合集（旧 AH + 多玩法 legs）
+      operationId: getMatchPredictions
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+        - name: strategy
+          in: query
+          required: false
+          description: AH 默认策略（如 CFFXDJ_5_V3）；legs 返回该场全部
+          schema: { type: string }
+      responses:
+        "200":
+          description: ah 可为 null；legs 可为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchPredictionsBundle" }
+        "404":
+          description: match not found
+
+  /dispatch/pending:
+    get:
+      summary: 临盘/中盘待发场次（对齐 calc_collection_times）
+      operationId: listDispatchPending
+      parameters:
+        - name: window
+          in: query
+          required: false
+          description: >
+            close=临盘采集点 | mid=中盘采集点。
+            凌晨场(0–10)：jingcai_date 16:00 / 23:00；
+            其余：kickoff−8h / kickoff−1h。
+            待发：abs(now−collect_at)≤30min 或 collect_at≤now≤kickoff。
+          schema: { type: string, enum: [close, mid], default: close }
+        - name: scope
+          in: query
+          required: false
+          schema: { type: string, enum: [jingcai, extra, all], default: jingcai }
+      responses:
+        "200":
+          description: 按 minutes_to_collect、minutes_to_kick 升序
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DispatchPendingResponse" }
+
+
+components:
+  parameters:
+    MatchId:
+      name: id
+      in: path
+      required: true
+      description: match_uid 或内部数字 id（实现二选一，响应里都会回 match_uid）
+      schema: { type: string }
+
+  schemas:
+    MatchListItem:
+      type: object
+      required: [id, match]
+      properties:
+        id: { type: string, description: match_uid }
+        match: { $ref: "#/components/schemas/Match" }
+        has_prediction: { type: boolean }
+        direction:
+          type: string
+          nullable: true
+          enum: [主, 客, 不下注, null]
+
+    MatchDetail:
+      type: object
+      required: [match, result, stats, odds, meta]
+      properties:
+        match: { $ref: "#/components/schemas/Match" }
+        result:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/Result"
+        stats: { $ref: "#/components/schemas/Stats" }
+        odds: { $ref: "#/components/schemas/Odds" }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    Match:
+      type: object
+      required: [date, scope, teams]
+      properties:
+        date: { type: string, format: date, description: 竞彩日 }
+        weekday: { type: string }
+        scope: { type: string, enum: [jingcai, extra] }
+        jc:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [id, no]
+              properties:
+                id: { type: string, example: "一003" }
+                weekday: { type: string }
+                no: { type: string, example: "003" }
+        competition:
+          type: object
+          properties:
+            name: { type: string }
+            type: { type: string }
+            stage: { type: string }
+        kickoff_hour: { type: integer, minimum: 0, maximum: 23 }
+        kickoff_at: { type: string, format: date-time, nullable: true }
+        teams:
+          type: object
+          required: [home, away]
+          properties:
+            home: { type: string }
+            away: { type: string }
+        ids:
+          type: object
+          additionalProperties: true
+
+    Result:
+      type: object
+      properties:
+        home_goals: { type: integer }
+        away_goals: { type: integer }
+        total_goals: { type: integer }
+        wdl: { type: string, enum: [胜, 平, 负] }
+
+    Stats:
+      type: object
+      additionalProperties: true
+      properties:
+        recent: { type: object, additionalProperties: true }
+        h2h: { type: object, additionalProperties: true }
+        rank:
+          type: object
+          properties:
+            home: { type: integer, nullable: true }
+            away: { type: integer, nullable: true }
+        popularity_diff: { type: number, nullable: true }
+        support_proxy_odds: { type: number, nullable: true }
+        injury: { nullable: true }
+        weather: { nullable: true }
+
+    AsianLineFull:
+      type: object
+      properties:
+        home_water: { type: number, nullable: true }
+        handicap: { type: number, nullable: true }
+        away_water: { type: number, nullable: true }
+
+    AsianPhases:
+      type: object
+      description: open/mid/close；macau 仓库旧口径可为纯数字盘口
+      properties:
+        open:
+          oneOf:
+            - type: number
+            - $ref: "#/components/schemas/AsianLineFull"
+            - type: "null"
+        mid:
+          oneOf:
+            - $ref: "#/components/schemas/AsianLineFull"
+            - type: "null"
+        close:
+          oneOf:
+            - type: number
+            - $ref: "#/components/schemas/AsianLineFull"
+            - type: "null"
+
+    Odds:
+      type: object
+      properties:
+        asian:
+          type: object
+          properties:
+            macau: { $ref: "#/components/schemas/AsianPhases" }
+            crown: { $ref: "#/components/schemas/AsianPhases" }
+            william: { $ref: "#/components/schemas/AsianPhases" }
+            bet365: { $ref: "#/components/schemas/AsianPhases" }
+          additionalProperties:
+            $ref: "#/components/schemas/AsianPhases"
+        euro_home_win:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              open: { type: number, nullable: true }
+              close: { type: number, nullable: true }
+        jc_home_win:
+          type: object
+          properties:
+            open: { type: number, nullable: true }
+            close: { type: number, nullable: true }
+        jc_hhad:
+          type: object
+          properties:
+            open: { $ref: "#/components/schemas/JcHhadLine" }
+            mid: { $ref: "#/components/schemas/JcHhadLine" }
+            close: { $ref: "#/components/schemas/JcHhadLine" }
+        _snap:
+          type: object
+          properties:
+            open_at: { type: string, format: date-time, nullable: true }
+            mid_at: { type: string, format: date-time, nullable: true }
+            close_at: { type: string, format: date-time, nullable: true }
+
+    JcHhadLine:
+      type: object
+      nullable: true
+      properties:
+        goal_line: { type: string, description: 竞彩让球线，如 "-1" }
+        home: { type: number }
+        draw: { type: number }
+        away: { type: number }
+
+    Meta:
+      type: object
+      properties:
+        source_file: { type: string }
+        month: { type: string, example: "2610" }
+        schema_version: { type: string, example: "2.0" }
+        pipeline: { type: string }
+        note: { type: string }
+
+    Prediction:
+      type: object
+      required: [direction, strategy, settle_book, rationale]
+      properties:
+        direction: { type: string, enum: [主, 客, 不下注] }
+        strategy: { type: string, example: CFFXDJ_5_V3 }
+        settle_book: { type: string, example: macau_close }
+        rationale:
+          type: array
+          items: { type: string }
+        confidence: { type: number, nullable: true }
+
+    MatchPredictionsBundle:
+      type: object
+      required: [ah, legs]
+      properties:
+        ah:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/Prediction"
+        legs:
+          type: array
+          items: { $ref: "#/components/schemas/PredictionLeg" }
+
+    PredictionLeg:
+      type: object
+      required: [id, market, settle_book]
+      properties:
+        id: { type: integer }
+        market: { type: string, enum: [ah, ou, 1x2, jc_hhad] }
+        side: { type: string, nullable: true }
+        line: { type: number, nullable: true }
+        line_text: { type: string, nullable: true }
+        stake:
+          type: integer
+          nullable: true
+          description: >
+            整数「份」；可空=不推荐注额。不写死本金单位，1 份对应金额由资金表另定。
+        strategy: { type: string, nullable: true }
+        settle_book: { type: string, example: macau_close }
+        rationale:
+          type: array
+          items: { type: string }
+        confidence: { type: number, nullable: true }
+        gap: { type: object, nullable: true, additionalProperties: true }
+        produced_at: { type: string }
+
+    DispatchPendingItem:
+      type: object
+      required: [id, match, minutes_to_kick, has_legs]
+      properties:
+        id: { type: string }
+        match: { $ref: "#/components/schemas/Match" }
+        kickoff_at_resolved: { type: string, format: date-time }
+        mid_collect_at: { type: string, format: date-time }
+        close_collect_at: { type: string, format: date-time }
+        collect_at: { type: string, format: date-time, description: 本 window 对应的采集点 }
+        collection_schedule:
+          type: object
+          properties:
+            mid_time: { type: string, example: "16:00" }
+            final_time: { type: string, example: "23:00" }
+        minutes_to_kick: { type: number }
+        minutes_to_collect: { type: number }
+        has_legs: { type: boolean }
+        leg_count: { type: integer }
+
+    DispatchPendingResponse:
+      type: object
+      required: [window, scope, now, items]
+      properties:
+        window: { type: string, enum: [close, mid] }
+        scope: { type: string }
+        now: { type: string, format: date-time }
+        approximation: { type: object, additionalProperties: true }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DispatchPendingItem" }

@@ -1,0 +1,185 @@
+{
+  "_synthetic": "合成样例：结构同真实响应，所有值均为虚构",
+  "success": 1,
+  "data": {
+    "fixture_id": 1065370802,
+    "bookmakers": [
+      {
+        "name": "示例1",
+        "slug": "bet365",
+        "odds": {
+          "1x2": {
+            "opening": {
+              "home": 2.72,
+              "draw": 0,
+              "away": 1
+            },
+            "closing": {
+              "home": 1.64,
+              "draw": 2,
+              "away": 3
+            },
+            "inplay": {
+              "home": 2.02,
+              "draw": 2,
+              "away": 0
+            }
+          },
+          "asian_handicap": {
+            "opening": {
+              "line": -0.75,
+              "home": 4.34,
+              "away": 3.44
+            },
+            "closing": {
+              "line": 2.75,
+              "home": 3.24,
+              "away": 1.96
+            },
+            "inplay": {
+              "line": 3,
+              "home": 3.23,
+              "away": 4.24
+            }
+          },
+          "goal_line": {
+            "opening": {
+              "line": -0.75,
+              "over": 3.02,
+              "under": 3.08
+            },
+            "closing": {
+              "line": 0,
+              "over": 1.51,
+              "under": 3.04
+            },
+            "inplay": {
+              "line": -1.25,
+              "over": 4.19,
+              "under": 3.5
+            }
+          },
+          "corner_line": {
+            "opening": {
+              "line": 2.5,
+              "over": 2.22,
+              "under": 2.64
+            },
+            "closing": {
+              "line": 3,
+              "over": 3.34,
+              "under": 0
+            },
+            "inplay": {
+              "line": 0.0,
+              "over": 1.68,
+              "under": 2.88
+            }
+          },
+          "corner_asian": {
+            "opening": {
+              "line": 2.5,
+              "home": 2.86,
+              "away": 3.13
+            },
+            "closing": {
+              "line": -1.25,
+              "home": 2.94,
+              "away": 3.91
+            },
+            "inplay": null
+          },
+          "card_line": {
+            "opening": {
+              "line": 2.75,
+              "over": 4.41,
+              "under": 4.25
+            },
+            "closing": {
+              "line": 0,
+              "over": 2.81,
+              "under": 3.43
+            },
+            "inplay": null
+          },
+          "card_asian": {
+            "opening": {
+              "line": -0.75,
+              "home": 2.52,
+              "away": 3.99
+            },
+            "closing": {
+              "line": -0.75,
+              "home": 3.6,
+              "away": 2.19
+            },
+            "inplay": null
+          },
+          "asian_handicap_half": {
+            "opening": {
+              "line": 0.25,
+              "home": 2.63,
+              "away": 2.87
+            },
+            "closing": {
+              "line": 2.75,
+              "home": 4.17,
+              "away": 3.52
+            },
+            "inplay": {
+              "line": 1,
+              "home": 3.28,
+              "away": 1.52
+            }
+          },
+          "goal_line_half": {
+            "opening": {
+              "line": 2,
+              "over": 2.59,
+              "under": 3.86
+            },
+            "closing": {
+              "line": 2.5,
+              "over": 3.37,
+              "under": 2.51
+            },
+            "inplay": {
+              "line": -0.75,
+              "over": 1.6,
+              "under": 3.97
+            }
+          },
+          "corner_line_half": {
+            "opening": {
+              "line": 1,
+              "over": 3.89,
+              "under": 3.19
+            },
+            "closing": {
+              "line": 2.5,
+              "over": 3,
+              "under": 3.19
+            },
+            "inplay": {
+              "line": -0.25,
+              "over": 2.28,
+              "under": 1.58
+            }
+          },
+          "btts": {
+            "opening": {
+              "yes": 4.38,
+              "no": 2.17
+            },
+            "closing": {
+              "yes": 4.0,
+              "no": 2.85
+            },
+            "inplay": null
+          },
+          "goal_line_fixed": []
+        }
+      }
+    ]
+  }
+}

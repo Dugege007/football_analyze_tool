@@ -1,0 +1,44 @@
+{
+  "_synthetic": "合成示例：策略名与说明均为虚构，仅用于演示字段结构和让测试可运行。真实清单请自行维护为 api/config/leak_suspect.json（已 gitignore）。",
+  "version": "example.1",
+  "source": "（示例）",
+  "decided_by": "（示例）",
+  "match_rule": "strategy_key 或 aliases 精确匹配；不做前缀匹配；未列出的策略 = null",
+  "values": {
+    "cutoff_plus24": "示例含义：回测时可用历史赛果的截止时刻计算有误，可能把开赛后才知道的赛果算进去，数字疑似泄漏；修好前不引用"
+  },
+  "entries": [
+    {
+      "strategy_key": "LEGACY_V4",
+      "aliases": [
+        "LEGACY_V4_alias"
+      ],
+      "leak_suspect": "cutoff_plus24",
+      "note": "合成示例条目"
+    },
+    {
+      "strategy_key": "LEGACY_V5",
+      "aliases": [
+        "LEGACY_V5_alias"
+      ],
+      "leak_suspect": "cutoff_plus24",
+      "note": "合成示例条目"
+    },
+    {
+      "strategy_key": "LEGACY_V6",
+      "aliases": [
+        "LEGACY_V6_alias"
+      ],
+      "leak_suspect": "cutoff_plus24",
+      "note": "合成示例条目"
+    },
+    {
+      "strategy_key": "LEGACY_V7",
+      "aliases": [
+        "LEGACY_V7_alias"
+      ],
+      "leak_suspect": "cutoff_plus24",
+      "note": "合成示例条目"
+    }
+  ]
+}

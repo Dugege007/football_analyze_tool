@@ -1,0 +1,372 @@
+openapi: 3.0.3
+info:
+  title: 比赛分析工具 · M5 方案叠加 / 验证精算（stack + bankroll backtest 切片）
+  version: 0.3.10
+  description: |
+    schema 切片 v1.6 + v1.7（odds_asian 水位档位→中点水位，见 v1_7-water-tier-midpoint.md）。
+    settlement_version = ah_v4_water_midpoint。0.3.10：summary 增加影子台账三键 n_eligible/hits/coverage（映射 n/signal_count；coverage 无分母→null）。前端可将 hits<80 的 ROI 灰显（实现归前端）。
+    - 指纹 extra = settlement_version + stake_rule + bankroll_rules(book/exclude_censored/initial) + data_rev。
+    - crown/william 结算直接用库内水位（tier_midpoint 或 actual）；water_tier_map 已废弃（忽略，并在 deprecations 中提示）。
+    - validate：真实水位（无则 fallback 0.95 并计数）+ 资金曲线注额 + 最大回撤；
+      指纹含 settlement_version / stake_rule / bankroll_rules，命中 reused。
+    - compare：items（缓存 run）+ stack（共用资金实时计算，stake_mode unified|per_strategy，冲突标注）。
+    - 不改现网亚盘 / CFFXDJ_5_V3。
+servers:
+  - url: http://127.0.0.1:8787
+
+paths:
+  /matches/{id}/odds:
+    get:
+      operationId: getMatchOddsV17
+      summary: 赔率（0.3.8：crown/william 亚盘水位为中点/真实水位）
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: raw, in: query, required: false, schema: { type: boolean, default: false }, description: "true 返回 odds_raw 原始导入 JSON（档位，不覆盖）" }
+      responses:
+        "200":
+          description: |
+            asian.crown|william.<phase> 增加 water_src（tier_midpoint|actual）、water_censored、water_tier_raw{home,away}；
+            home_water/away_water 为水位（如 1.0 / 0.875）。macau 不变。
+  /strategies/{id}/validate:
+    post:
+      operationId: startStrategyValidateM5
+      summary: 创建或复用验证 run（M5 精算）
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateRequest" }
+      responses:
+        "202":
+          description: 新建（reused=false）或复用（reused=true）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationRunResponse" }
+        "404": { description: strategy_def 不存在 }
+
+  /strategies/runs/{run_id}/cache:
+    get:
+      operationId: getStrategyRunCacheM5
+      summary: run 的逐场 cache（metrics 含资金字段）
+      parameters:
+        - { name: run_id, in: path, required: true, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, default: 500 } }
+      responses:
+        "200":
+          description: cache rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_id: { type: integer }
+                  items: { type: array, items: { $ref: "#/components/schemas/CacheRow" } }
+
+  /strategies/compare:
+    post:
+      operationId: compareStrategiesM5
+      summary: 多方案对比 + stack 叠加
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompareRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompareResponse" }
+        "400": { description: 未提供 strategy_ids / strategy_keys }
+
+components:
+  schemas:
+    StakeRule:
+      type: object
+      properties:
+        default_units: { type: integer, minimum: 0, default: 1 }
+        use_prediction_stake: { type: boolean, default: true }
+        below_min:
+          type: string
+          enum: [skip, raise]
+          default: raise
+          description: 金额<min_stake 时 raise 抬到下限（默认，同 /bankroll/calc；抬后超剩余×max_pct → bankrupt_guard 不下）/ skip 不下
+        unit_fraction: { type: number, nullable: true, description: "缺省 bankroll unit_definition（0.005）" }
+
+    ValidateRequest:
+      type: object
+      properties:
+        run_label: { type: string, nullable: true }
+        scope: { type: string, default: jingcai }
+        settle_book: { type: string, default: macau_close }
+        shadow: { type: boolean, default: true }
+        params:
+          type: object
+          additionalProperties: true
+          properties:
+            stake_rule: { $ref: "#/components/schemas/StakeRule" }
+            linked_prediction_batch: { type: string, nullable: true }
+            water_tier_map: { type: boolean, deprecated: true, description: "0.3.8 废弃：忽略，summary.deprecations 提示" }
+            exclude_censored: { type: boolean, default: false, description: "非 macau 结算时，所下一侧为截断档（t≤0 即 ≤0.70，或 t≥10 即 ≥1.20）则不下（reason water_censored_excluded）；也可放在 config.extras；进指纹" }
+            data_rev: { type: string, nullable: true, description: "显式覆盖；缺省自动 = ib:<import_batches 最大 id>|p:<本方案 predictions 行数>:<内容哈希12位>" }
+            initial_bankroll: { type: number, nullable: true, description: "覆盖本金（测试用）；进指纹" }
+
+    MaxDrawdown:
+      type: object
+      properties:
+        amount: { type: number }
+        pct: { type: number, description: "0–1，相对峰值" }
+        peak_equity: { type: number }
+        trough_equity: { type: number }
+        peak_index: { type: integer, description: "0 = 起点" }
+        trough_index: { type: integer }
+        peak_at: { type: string, nullable: true }
+        trough_at: { type: string, nullable: true }
+
+    BankrollRules:
+      type: object
+      properties:
+        initial_bankroll: { type: number, example: 10000 }
+        initial_source: { type: string }
+        book: { type: string, example: macau }
+        exclude_censored: { type: boolean, description: "生效值（开关 ∧ book≠macau）" }
+        unit_fraction: { type: number, example: 0.005 }
+        unit_base: { type: string, example: weekly_equity }
+        per_match: { type: integer, example: 3 }
+        per_day: { type: integer, example: 10 }
+        min_stake: { type: number, nullable: true, example: 50 }
+        max_pct: { type: number, nullable: true, example: 0.5 }
+        below_min: { type: string, enum: [skip, raise], default: raise }
+
+    RunSummary:
+      type: object
+      additionalProperties: true
+      properties:
+        settlement_version: { type: string, example: ah_v4_water_midpoint }
+        n: { type: integer }
+        sample_count: { type: integer }
+        signal_count: { type: integer }
+        n_eligible: { type: integer, description: "影子台账分母：有赛果+可结算盘口的样本底座（≈n/sample_count）" }
+        hits: { type: integer, description: "规则触发并产生方向的场次数（≈signal_count；不含无方向 skip）" }
+        coverage: { type: number, nullable: true, description: "hits/n_eligible；n_eligible=0 时为 null（勿用 0 掩盖）" }
+        multi_hit_count: { type: integer, nullable: true, description: "同场多规则命中数；本包恒 null" }
+        ledger_metrics_note: { type: string, description: "三键映射说明" }
+        bet_count: { type: integer }
+        no_stake_count: { type: integer }
+        skip_dir_count: { type: integer }
+        skipped: { type: integer }
+        skipped_detail: { type: object, additionalProperties: { type: integer } }
+        stake_total_amount: { type: number }
+        pnl_amount: { type: number }
+        pnl: { type: number }
+        pnl_units: { type: number }
+        roi: { type: number, nullable: true }
+        initial_bankroll: { type: number }
+        final_bankroll: { type: number }
+        max_drawdown: { $ref: "#/components/schemas/MaxDrawdown" }
+        juice_actual_count: { type: integer }
+        juice_fixed_macau_count: { type: integer }
+        juice_tier_midpoint_count: { type: integer }
+        juice_fallback_count: { type: integer }
+        water_censored_count: { type: integer, description: "所下一侧水位为截断档的样本数" }
+        water_censored_bet_count: { type: integer }
+        water_censored_excluded_count: { type: integer }
+        min_stake_raised_count: { type: integer }
+        bankrupt_guard_count: { type: integer }
+        juice_note: { type: string }
+        exclude_censored: { type: boolean }
+        deprecations: { type: array, items: { type: string } }
+        data_rev: { type: string }
+        data_rev_source: { type: string, enum: [import_batches.max_id+predictions_sig, table_counts_hash+predictions_sig, explicit] }
+        fallback_juice: { type: number }
+        result_counts: { type: object, additionalProperties: { type: integer } }
+        capped_count: { type: integer }
+        below_min_skipped_count: { type: integer }
+        stake_rule: { $ref: "#/components/schemas/StakeRule" }
+        bankroll_rules: { $ref: "#/components/schemas/BankrollRules" }
+        settlement_note: { type: string }
+
+    ValidationRunResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        strategy_def_id: { type: integer }
+        run_label: { type: string, nullable: true }
+        scope: { type: string }
+        settle_book: { type: string }
+        params: { type: object, additionalProperties: true }
+        run_fingerprint: { type: string }
+        started_at: { type: string }
+        finished_at: { type: string, nullable: true }
+        status: { type: string, enum: [running, ok, failed] }
+        summary: { $ref: "#/components/schemas/RunSummary" }
+        error_text: { type: string, nullable: true }
+        reused: { type: boolean }
+        data_rev: { type: string }
+        data_rev_source: { type: string }
+
+    CacheRow:
+      type: object
+      properties:
+        id: { type: integer }
+        run_id: { type: integer }
+        match_id: { type: integer }
+        market: { type: string, example: ah }
+        side: { type: string, nullable: true, enum: [主, 客, null] }
+        line: { type: number }
+        stake_units: { type: integer }
+        result_code: { type: string, enum: [win, win_half, push, lose_half, lose, skip, no_stake] }
+        pnl_units: { type: number }
+        row_fingerprint: { type: string }
+        metrics:
+          type: object
+          properties:
+            seq: { type: integer }
+            jingcai_date: { type: string }
+            match_uid: { type: string }
+            direction: { type: string }
+            units_requested: { type: integer }
+            unit_amount: { type: number }
+            amount: { type: number }
+            pnl_amount: { type: number }
+            equity_day_start: { type: number }
+            equity_after: { type: number }
+            juice_used: { type: number, nullable: true }
+            juice_source: { type: string, nullable: true, enum: [fixed_macau, tier_midpoint, actual, fallback, null] }
+            water_src: { type: string, nullable: true, enum: [tier_midpoint, actual, null] }
+            water_censored: { type: boolean, nullable: true }
+            water_raw: { type: number, nullable: true, description: "原始 water（crown/william 为水档）" }
+            settle_code: { type: string, nullable: true }
+            reasons:
+              type: array
+              items: { type: string }
+              description: "per_match|per_match_total|per_day|max_pct_of_remaining|min_stake_raised|bankrupt_guard|below_min_skip|tier_map_off|tier_out_of_range|water_missing|water_invalid"
+            settlement: { type: string }
+
+    Series:
+      type: object
+      description: 按场一点；index 对齐
+      properties:
+        x: { type: array, items: { type: string }, description: jingcai_date }
+        match_ids: { type: array, items: { type: integer } }
+        pnl: { type: array, items: { type: number } }
+        stake: { type: array, items: { type: number } }
+        cumulative_pnl: { type: array, items: { type: number } }
+        bankroll: { type: array, items: { type: number } }
+        drawdown_pct: { type: array, items: { type: number } }
+        initial_bankroll: { type: number }
+
+    StackSeries:
+      allOf:
+        - $ref: "#/components/schemas/Series"
+        - type: object
+          properties:
+            conflict: { type: array, items: { type: boolean } }
+            sides:
+              type: array
+              items: { type: object, additionalProperties: { type: string } }
+
+    Conflict:
+      type: object
+      properties:
+        match_id: { type: integer }
+        match_uid: { type: string }
+        jc_id: { type: string, nullable: true, example: 六204 }
+        home_team: { type: string, description: "规范名：teams.name_zh_canonical，无则 matches.home_team", example: 横滨水手 }
+        away_team: { type: string, description: "规范名：teams.name_zh_canonical，无则 matches.away_team", example: 清水心跳 }
+        jingcai_date: { type: string }
+        kickoff_at: { type: string, nullable: true, example: "2026-06-06T16:00:00+08:00" }
+        legs:
+          type: array
+          items:
+            type: object
+            properties:
+              strategy_key: { type: string }
+              side: { type: string }
+              amount: { type: number }
+              result_code: { type: string }
+              pnl: { type: number }
+        staked_both: { type: boolean }
+        net_pnl: { type: number }
+        net_stake: { type: number }
+
+    CompareRequest:
+      type: object
+      properties:
+        strategy_ids: { type: array, items: { type: integer } }
+        strategy_keys: { type: array, items: { type: string } }
+        scope: { type: string, default: jingcai }
+        settle_book: { type: string, default: macau_close }
+        shadow: { type: boolean, default: true }
+        params: { type: object, additionalProperties: true }
+        auto_validate: { type: boolean, default: true }
+        run_label: { type: string, nullable: true }
+        include_stack: { type: boolean, default: true }
+        stake_mode: { type: string, enum: [unified, per_strategy], default: per_strategy }
+        stake_rule: { $ref: "#/components/schemas/StakeRule" }
+
+    CompareItem:
+      type: object
+      properties:
+        strategy_def_id: { type: integer }
+        strategy_key: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [ok, missing_def, missing_run] }
+        run_id: { type: integer, nullable: true }
+        run_fingerprint: { type: string, nullable: true }
+        reused: { type: boolean, nullable: true }
+        summary: { $ref: "#/components/schemas/RunSummary" }
+        series: { $ref: "#/components/schemas/Series" }
+        note: { type: string, nullable: true }
+
+    Stack:
+      type: object
+      nullable: true
+      properties:
+        status: { type: string, enum: [ok, empty] }
+        stake_mode: { type: string, enum: [unified, per_strategy] }
+        stake_rule: { allOf: [{ $ref: "#/components/schemas/StakeRule" }], nullable: true }
+        strategies: { type: array, items: { type: string } }
+        bankroll_rules: { $ref: "#/components/schemas/BankrollRules" }
+        settlement_version: { type: string }
+        data_rev: { type: string, description: "基础版本（不含方案签名）" }
+        data_rev_by_strategy: { type: object, additionalProperties: { type: string }, description: "各方案完整 data_rev" }
+        conflict_policy: { type: string }
+        summary:
+          allOf:
+            - $ref: "#/components/schemas/RunSummary"
+            - type: object
+              properties:
+                conflict_count: { type: integer }
+                conflict_staked_both_count: { type: integer }
+                conflict_net_pnl: { type: number }
+                per_strategy:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      n: { type: integer }
+                      bet_count: { type: integer }
+                      stake_total_amount: { type: number }
+                      pnl_amount: { type: number }
+                      roi: { type: number, nullable: true }
+                      stake_rule: { $ref: "#/components/schemas/StakeRule" }
+        series: { $ref: "#/components/schemas/StackSeries" }
+        conflicts: { type: array, items: { $ref: "#/components/schemas/Conflict" } }
+        persisted: { type: boolean, description: "恒 false：stack 实时计算不落库" }
+
+    CompareResponse:
+      type: object
+      properties:
+        scope: { type: string }
+        settle_book: { type: string }
+        params: { type: object, additionalProperties: true }
+        stake_mode: { type: string }
+        settlement_version: { type: string }
+        data_rev: { type: string, description: "基础版本 ib:<id>（不含方案签名）" }
+        data_rev_source: { type: string }
+        data_rev_note: { type: string }
+        items: { type: array, items: { $ref: "#/components/schemas/CompareItem" } }
+        stack: { $ref: "#/components/schemas/Stack" }

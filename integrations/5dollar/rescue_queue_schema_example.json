@@ -1,0 +1,25 @@
+{
+  "schema": "live_rescue_queue_v1",
+  "target_key": "2030-01-01|周三001|mid|rule",
+  "jingcai_date": "2030-01-01",
+  "match_uid": "2030-01-01|周三001",
+  "fixture_id": 1000000001,
+  "channel": "rule",
+  "point": "mid",
+  "phase_variant": "rule",
+  "target_at": "2030-01-01T07:30:00+08:00",
+  "kickoff_at": "2030-01-01T15:30:00+08:00",
+  "enqueued_at": "2030-01-01T10:30:00+08:00",
+  "reason": "missed_after_window",
+  "scenario": "S1",
+  "priority": 100,
+  "attempts": 0,
+  "max_attempts": 5,
+  "status": "pending",
+  "rescue_plan": [
+    "R-C",
+    "R-A"
+  ],
+  "expires_mode": "kickoff_plus_3h_recommend_live_off",
+  "notes": "合成示例，非真实队列条目"
+}

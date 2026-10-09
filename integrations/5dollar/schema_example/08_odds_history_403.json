@@ -1,0 +1,9 @@
+{
+  "_synthetic": "合成样例：结构同真实响应，所有值均为虚构",
+  "success": 0,
+  "error": {
+    "type": "permission_error",
+    "code": "example_error",
+    "message": "示例错误信息（合成）"
+  }
+}

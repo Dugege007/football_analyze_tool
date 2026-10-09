@@ -1,0 +1,38 @@
+{
+  "_synthetic": "合成样例：结构同真实响应，所有值均为虚构",
+  "success": 1,
+  "data": [
+    {
+      "id": 1089541072,
+      "name": "示例3",
+      "short_name": null,
+      "country": {
+        "code": "example_error",
+        "name": "示例4"
+      },
+      "is_popular": true,
+      "has_standings": true,
+      "last_fixture_utc": "2030-01-01T12:00:00+00:00",
+      "last_fixture_ts": 1893482179
+    },
+    {
+      "id": 1061900646,
+      "name": "示例5",
+      "short_name": null,
+      "country": {
+        "code": "example_error",
+        "name": "示例6"
+      },
+      "is_popular": true,
+      "has_standings": true,
+      "last_fixture_utc": "2030-01-01T12:00:00+00:00",
+      "last_fixture_ts": 1893474228
+    }
+  ],
+  "pagination": {
+    "page": 2,
+    "per_page": 0,
+    "count": 1,
+    "has_more": false
+  }
+}

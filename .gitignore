@@ -1,0 +1,78 @@
+# ---- 密钥 / 本机配置（永不提交）----
+.env
+.env.*
+!config.example.env
+secrets/
+secrets*
+*.pem
+*.key
+*.cookie
+cookies*.txt
+
+# ---- 数据库 / 备份 ----
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite*
+*.bak
+*.bak-*
+*.bak_*
+backups/
+api/data/
+data/
+
+# ---- 原始历史缓存 / 采集运行产物 ----
+raw/
+**/raw/
+**/hist/
+**/staging/
+**/state/
+**/plan/
+**/csl/
+**/queue/
+**/reports/
+rescue_queue/
+*.jsonl
+call_log.tsv
+calls.tsv
+**/backfill_yield_ledger.json
+
+# ---- 日志 ----
+logs/
+**/logs/
+*.log
+daemon.pid
+daemon.lock
+daemon.out
+
+# ---- Python / 环境 ----
+__pycache__/
+*.py[cod]
+.venv/
+.venv-*/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# ---- 浏览器 profile / IDE / 系统 ----
+browser-profile/
+.chrome-profile/
+user-data-dir/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# v2：私有参数与真实数据派生配置（只提交 *.example.json）
+config/strategy_params.json
+api/config/kickoff_drift.json
+api/config/leak_suspect.json
+research/shadow-ledger/*.local.csv

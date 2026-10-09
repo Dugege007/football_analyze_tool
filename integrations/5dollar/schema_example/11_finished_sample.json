@@ -1,0 +1,101 @@
+{
+  "_synthetic": "合成样例：结构同真实响应，所有值均为虚构",
+  "success": 1,
+  "data": [
+    {
+      "id": 1028317442,
+      "league": {
+        "id": 1080428463,
+        "name": "示例联赛2"
+      },
+      "teams": {
+        "home": {
+          "id": 1012647899,
+          "name": "示例主队3"
+        },
+        "away": {
+          "id": 1068538165,
+          "name": "示例客队3"
+        }
+      },
+      "kickoff_utc": "2030-01-01T12:00:00+00:00",
+      "kickoff_ts": 1893459764,
+      "status": "finished",
+      "status_reason": null,
+      "status_code": "示例",
+      "goals": {
+        "home": 1,
+        "away": 2,
+        "half_home": 2,
+        "half_away": 2
+      },
+      "corners": {
+        "home": 3,
+        "away": 1,
+        "half_home": 3,
+        "half_away": 0
+      },
+      "cards": {
+        "home": {
+          "yellow": 3,
+          "red": 0
+        },
+        "away": {
+          "yellow": 3,
+          "red": 1
+        }
+      }
+    },
+    {
+      "id": 1046803888,
+      "league": {
+        "id": 1056615799,
+        "name": "示例联赛2"
+      },
+      "teams": {
+        "home": {
+          "id": 1040600020,
+          "name": "示例主队4"
+        },
+        "away": {
+          "id": 1025378754,
+          "name": "示例客队4"
+        }
+      },
+      "kickoff_utc": "2030-01-01T12:00:00+00:00",
+      "kickoff_ts": 1893532819,
+      "status": "finished",
+      "status_reason": null,
+      "status_code": "示例",
+      "goals": {
+        "home": 1,
+        "away": 2,
+        "half_home": 3,
+        "half_away": 0
+      },
+      "corners": {
+        "home": 3,
+        "away": 1,
+        "half_home": 0,
+        "half_away": 2
+      },
+      "cards": {
+        "home": {
+          "yellow": 0,
+          "red": 2
+        },
+        "away": {
+          "yellow": 2,
+          "red": 1
+        }
+      }
+    }
+  ],
+  "pagination": {
+    "page": 0,
+    "per_page": 2,
+    "count": 3,
+    "has_more": true
+  },
+  "_note": "示例"
+}

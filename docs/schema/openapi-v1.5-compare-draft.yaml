@@ -1,0 +1,178 @@
+openapi: 3.0.3
+info:
+  title: 比赛分析工具 · 方案对比 M4（validate 加厚 / compare 切片）
+  version: 0.3.4
+  description: |
+    schema 切片 v1.5 · 方案对比 M4。
+    - 表沿用 M2/M3；无新 DDL。
+    - validate：指纹命中 reused；未命中写非空 summary + cache（简化亚盘结算）。
+    - compare：多方案 cumulative_pnl 序列；stack 为 stub null。
+    - 不改现网亚盘 / CFFXDJ_5_V3 默认。
+servers:
+  - url: http://127.0.0.1:8787
+    description: local
+
+paths:
+  /strategies/{id}/validate:
+    post:
+      summary: 创建或复用验证 run（M4 加厚）
+      description: |
+        run_fingerprint 命中 → reused=true。
+        未命中 → 写 run + simplified_ah_v1 summary/cache。
+        M3 空 placeholder（cache=0）同指纹允许升级重算。
+      operationId: startStrategyValidateM4
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateRequest" }
+      responses:
+        "202":
+          description: 新建或复用
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationRunResponse" }
+        "404":
+          description: strategy_def 不存在
+
+  /strategies/compare:
+    post:
+      summary: 多方案指标/资金序列对比（折线）
+      operationId: compareStrategies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompareRequest" }
+      responses:
+        "200":
+          description: 对比结果
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompareResponse" }
+        "400":
+          description: 未提供 strategy_ids / strategy_keys
+
+components:
+  schemas:
+    ValidateRequest:
+      type: object
+      properties:
+        run_label: { type: string, nullable: true }
+        scope: { type: string, default: jingcai }
+        settle_book: { type: string, default: macau_close }
+        shadow: { type: boolean, default: true }
+        params:
+          type: object
+          additionalProperties: true
+          properties:
+            linked_prediction_batch: { type: string, nullable: true }
+
+    ValidationRunResponse:
+      allOf:
+        - $ref: "#/components/schemas/ValidationRun"
+        - type: object
+          properties:
+            reused: { type: boolean }
+
+    ValidationRun:
+      type: object
+      required: [id, strategy_def_id, scope, settle_book, status]
+      properties:
+        id: { type: integer }
+        strategy_def_id: { type: integer }
+        run_label: { type: string, nullable: true }
+        scope: { type: string }
+        settle_book: { type: string }
+        params: { type: object, additionalProperties: true }
+        run_fingerprint: { type: string, nullable: true }
+        started_at: { type: string }
+        finished_at: { type: string, nullable: true }
+        status: { type: string, enum: [running, ok, failed] }
+        summary:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: |
+            M4：n/sample_count/bet_count/pnl/roi/skipped/settlement_note 等；
+            placeholder=false。
+        error_text: { type: string, nullable: true }
+
+    CompareRequest:
+      type: object
+      properties:
+        strategy_ids:
+          type: array
+          items: { type: integer }
+          description: strategy_defs.id
+        strategy_keys:
+          type: array
+          items: { type: string }
+          description: 按 key 取最新 version
+        scope: { type: string, default: jingcai }
+        settle_book: { type: string, default: macau_close }
+        shadow: { type: boolean, default: true }
+        params: { type: object, additionalProperties: true }
+        auto_validate:
+          type: boolean
+          default: true
+          description: 无 run 时触发最小 validate
+        run_label: { type: string, nullable: true }
+
+    Series:
+      type: object
+      required: [x, match_ids, pnl, cumulative_pnl]
+      properties:
+        x:
+          type: array
+          items: { type: string }
+          description: 通常为 jingcai_date
+        match_ids:
+          type: array
+          items: { type: integer }
+        pnl:
+          type: array
+          items: { type: number }
+        cumulative_pnl:
+          type: array
+          items: { type: number }
+        result_codes:
+          type: array
+          items: { type: string }
+
+    CompareItem:
+      type: object
+      required: [strategy_def_id, status, series]
+      properties:
+        strategy_def_id: { type: integer }
+        strategy_key: { type: string }
+        version: { type: string }
+        status:
+          type: string
+          enum: [ok, missing_def, missing_run]
+        run_id: { type: integer, nullable: true }
+        run_fingerprint: { type: string, nullable: true }
+        summary: { type: object, nullable: true, additionalProperties: true }
+        series: { $ref: "#/components/schemas/Series" }
+        reused: { type: boolean, nullable: true }
+        note: { type: string, nullable: true }
+
+    CompareResponse:
+      type: object
+      required: [items, stack]
+      properties:
+        scope: { type: string }
+        settle_book: { type: string }
+        params: { type: object, additionalProperties: true }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CompareItem" }
+        stack:
+          nullable: true
+          description: M4 stub；恒为 null
+        stack_note: { type: string }

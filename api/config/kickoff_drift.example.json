@@ -1,0 +1,10 @@
+{
+  "_synthetic": "空模板：公开仓不附带真实的开赛时间漂移清单。用自己的数据生成 api/config/kickoff_drift.json（已 gitignore），见 docs/SENSITIVE.md。",
+  "generated_at": null,
+  "generated_from": null,
+  "method": "由 api/scripts/build_kickoff_drift.py 从你自己的改期扫描 CSV 生成",
+  "info_only": true,
+  "n": 0,
+  "mismatch_live_vs_v2d3": 0,
+  "items": {}
+}

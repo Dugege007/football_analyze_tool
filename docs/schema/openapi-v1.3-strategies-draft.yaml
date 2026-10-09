@@ -1,0 +1,277 @@
+openapi: 3.0.3
+info:
+  title: 比赛分析工具 · 方案工场 M2（strategies 切片）
+  version: 0.3.1
+  description: |
+    schema v1.3 方案工场 M2 OpenAPI 切片。
+    - 配置驱动、版本化；不硬编码玩法。
+    - 验证 run 允许纯影子（只写 cache，不必先绑 predictions）。
+    - `linked_prediction_batch` 可选，放在 validate 的 params / runs.params_json。
+    - 完整 validate 编排 OUT OF SCOPE；现网可挂 stub（空列表）。
+    - 不改动现有 AH / bankroll / dispatch 语义。
+servers:
+  - url: http://127.0.0.1:8787
+    description: local
+
+paths:
+  /strategies:
+    get:
+      summary: 列出方案定义（可按 status / strategy_key 过滤）
+      operationId: listStrategies
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [draft, active, shadow, archived] }
+        - name: strategy_key
+          in: query
+          required: false
+          schema: { type: string, example: CFFXDJ_5_V3 }
+      responses:
+        "200":
+          description: 方案列表（stub 可返回空 items）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/StrategyDef" }
+    post:
+      summary: 登记一版方案定义（新 version 行；不覆盖历史）
+      operationId: createStrategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StrategyDefCreate" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StrategyDef" }
+        "409":
+          description: (strategy_key, version) 已存在
+        "501":
+          description: stub 未接线时可返回
+
+  /strategies/{key}/versions:
+    get:
+      summary: 某 strategy_key 的全部版本
+      operationId: listStrategyVersions
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string, example: CFFXDJ_5_V3 }
+      responses:
+        "200":
+          description: versions（新→旧）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [strategy_key, items]
+                properties:
+                  strategy_key: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/StrategyDef" }
+
+  /strategies/{id}/validate:
+    post:
+      summary: 创建验证 run（允许纯影子；完整编排可 501）
+      description: |
+        允许纯影子：不必先有入库 predictions；结果只进 strategy_validation_cache。
+        可选 `params.linked_prediction_batch` 关联已有预测批次。
+      operationId: startStrategyValidate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: strategy_defs.id
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateRequest" }
+      responses:
+        "202":
+          description: run 已创建（或 stub 占位）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationRun" }
+        "404":
+          description: strategy_def 不存在
+        "501":
+          description: validate 编排未实现（文档期可接受）
+
+  /strategies/runs/{run_id}:
+    get:
+      summary: 验证 run 摘要
+      operationId: getStrategyRun
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationRun" }
+        "404":
+          description: not found
+
+  /strategies/runs/{run_id}/cache:
+    get:
+      summary: 验证 cache 行（场×玩法）
+      operationId: getStrategyRunCache
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 500, maximum: 5000 }
+      responses:
+        "200":
+          description: cache rows（stub 可空）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id, items]
+                properties:
+                  run_id: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ValidationCacheRow" }
+        "404":
+          description: run not found
+
+components:
+  schemas:
+    StrategyConfig:
+      type: object
+      description: config_json 首版最小键；未知键进 extras
+      properties:
+        settle_book: { type: string, example: macau_close }
+        juice: { type: number, example: 0.95 }
+        vote:
+          type: object
+          properties:
+            members:
+              type: array
+              items: { type: string }
+            threshold: { type: integer, example: 3 }
+        gates:
+          type: array
+          items: { type: object, additionalProperties: true }
+        stake_rule: { type: string, example: fractional_quarter_kelly_units }
+        state_machine: { nullable: true }
+        feature_refs:
+          type: array
+          items: { type: string }
+        extras:
+          type: object
+          additionalProperties: true
+          description: 未知/实验键统一放这里
+      additionalProperties: false
+
+    StrategyDef:
+      type: object
+      required: [id, strategy_key, version, markets, config, status]
+      properties:
+        id: { type: integer }
+        strategy_key: { type: string, example: CFFXDJ_5_V3 }
+        version: { type: string, example: "2026.10.06" }
+        display_name: { type: string, nullable: true }
+        markets:
+          type: array
+          items: { type: string }
+          example: ["ah"]
+        config: { $ref: "#/components/schemas/StrategyConfig" }
+        config_fingerprint: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, shadow, archived] }
+        is_default: { type: boolean, default: false }
+        notes: { type: string, nullable: true }
+        created_at: { type: string }
+        updated_at: { type: string }
+
+    StrategyDefCreate:
+      type: object
+      required: [strategy_key, version]
+      properties:
+        strategy_key: { type: string }
+        version: { type: string }
+        display_name: { type: string }
+        markets:
+          type: array
+          items: { type: string }
+          default: ["ah"]
+        config: { $ref: "#/components/schemas/StrategyConfig" }
+        status: { type: string, enum: [draft, active, shadow, archived], default: draft }
+        is_default: { type: boolean, default: false }
+        notes: { type: string }
+
+    ValidateRequest:
+      type: object
+      properties:
+        run_label: { type: string, nullable: true }
+        scope: { type: string, default: jingcai, example: jingcai }
+        settle_book: { type: string, default: macau_close }
+        shadow: { type: boolean, default: true, description: true=纯影子，可不绑 predictions }
+        params:
+          type: object
+          additionalProperties: true
+          description: |
+            过滤窗口等。可选 `linked_prediction_batch`（string）关联入库预测批次。
+          properties:
+            linked_prediction_batch:
+              type: string
+              nullable: true
+              description: 可选；有入库预测批次时填写
+
+    ValidationRun:
+      type: object
+      required: [id, strategy_def_id, scope, settle_book, status]
+      properties:
+        id: { type: integer }
+        strategy_def_id: { type: integer }
+        run_label: { type: string, nullable: true }
+        scope: { type: string }
+        settle_book: { type: string }
+        params:
+          type: object
+          additionalProperties: true
+          description: 含可选 linked_prediction_batch
+        run_fingerprint: { type: string, nullable: true }
+        started_at: { type: string }
+        finished_at: { type: string, nullable: true }
+        status: { type: string, enum: [running, ok, failed] }
+        summary: { type: object, nullable: true, additionalProperties: true }
+        error_text: { type: string, nullable: true }
+
+    ValidationCacheRow:
+      type: object
+      required: [id, run_id, match_id, market]
+      properties:
+        id: { type: integer }
+        run_id: { type: integer }
+        match_id: { type: integer }
+        market: { type: string }
+        side: { type: string, nullable: true }
+        line: { type: number, nullable: true }
+        stake_units: { type: number, nullable: true }
+        result_code: { type: string, nullable: true }
+        pnl_units: { type: number, nullable: true }
+        metrics: { type: object, nullable: true, additionalProperties: true }
+        row_fingerprint: { type: string, nullable: true }
