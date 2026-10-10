@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  message,
   Button,
   Card,
   DatePicker,
   Empty,
   Segmented,
   Space,
+  Switch,
+  Collapse,
   Table,
   Tag,
   Typography,
@@ -17,8 +20,12 @@ import { listMatches, type DataSource } from '../api/client'
 import { labelDataSource } from '../labels'
 import { formatScore } from '../api/formatScore'
 import type { MatchListItem } from '../api/types'
+import { PICK_COLUMNS, formatMarketCell, hasEstimatedStake } from '../api/pickFormat'
+import { buildDailyMessage, type MessageMatch } from '../api/dailyMessageTemplate'
 
-const { Title, Text } = Typography
+const SHOW_PICKS_KEY = 'schedule.showPredictionColumns'
+
+const { Title, Text, Paragraph } = Typography
 
 /**
  * 北京时间（UTC+8）此刻所属的竞彩日。
@@ -57,6 +64,24 @@ export default function MatchListPage() {
   const [items, setItems] = useState<MatchListItem[]>([])
   const [source, setSource] = useState<DataSource>('mock')
   const [error, setError] = useState<string | null>(null)
+  const [showPicks, setShowPicks] = useState<boolean>(
+    () => typeof localStorage !== 'undefined' && localStorage.getItem(SHOW_PICKS_KEY) === '1',
+  )
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60 * 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const toggleShowPicks = (v: boolean) => {
+    setShowPicks(v)
+    try {
+      localStorage.setItem(SHOW_PICKS_KEY, v ? '1' : '0')
+    } catch {
+      /* 浏览器禁止本地存储时只在本次页面内生效 */
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -141,6 +166,56 @@ export default function MatchListPage() {
     },
   ]
 
+  const pickColumns: ColumnsType<MatchListItem> = PICK_COLUMNS.map((c) => ({
+    title: c.title,
+    width: 104,
+    render: (_: unknown, row: MatchListItem) => {
+      const text = formatMarketCell(row.picks, c.market)
+      if (text === '-') return '-'
+      const est = c.market === 'ah' && hasEstimatedStake(row.picks?.filter((p) => p.market === 'ah'))
+      return (
+        <Text strong style={{ whiteSpace: 'nowrap' }}>
+          {text}
+          {est && (
+            <Text type="secondary" style={{ fontSize: 12 }} title="冻结预测没有记录份数，份数是按预测页口径推算的">
+              *
+            </Text>
+          )}
+        </Text>
+      )
+    },
+  }))
+
+  const shownColumns = showPicks ? [...columns, ...pickColumns] : columns
+
+  const messageMatches: MessageMatch[] = items.map((row) => {
+    const ms = row.match.kickoff_at ? new Date(row.match.kickoff_at).getTime() : NaN
+    return {
+      jcId: row.match.jc?.id,
+      league: row.match.competition?.name,
+      home: row.match.teams.home,
+      away: row.match.teams.away,
+      kickoffText: formatKickoff(row),
+      kickoffMs: Number.isNaN(ms) ? null : ms,
+      picks: row.picks,
+    }
+  })
+  const dateText = date.format('YYYY-MM-DD')
+  const msgAll = buildDailyMessage(dateText, messageMatches)
+  const msgPending = buildDailyMessage(dateText, messageMatches, { onlyNotStarted: true, nowMs: now })
+  const copyText = async (text: string | null, label: string) => {
+    if (!text) {
+      message.info(`${label}：没有可以复制的场次。`)
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      message.success(`${label}：已复制到剪贴板。`)
+    } catch {
+      message.warning('浏览器不允许写入剪贴板，请手动选中预览里的文字复制。')
+    }
+  }
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -175,11 +250,50 @@ export default function MatchListPage() {
         />
       </Space>
 
+      <Collapse
+        size="small"
+        items={[
+          {
+            key: 'msg',
+            label: `当日消息预览（${msgAll ? msgAll.split('\n').length - 1 : 0} 场下注；只在页面上显示和复制，不会自动发送）`,
+            extra: (
+              <Space size={8} onClick={(e) => e.stopPropagation()}>
+                <Button size="small" onClick={() => copyText(msgAll, '复制全部')}>
+                  复制全部
+                </Button>
+                <Button size="small" onClick={() => copyText(msgPending, '只复制未开赛')}>
+                  只复制未开赛
+                </Button>
+              </Space>
+            ),
+            children: (
+              <Paragraph
+                style={{
+                  marginBottom: 0,
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: 13,
+                }}
+              >
+                {msgAll ?? '这一天没有下注的场次。'}
+              </Paragraph>
+            ),
+          },
+        ]}
+      />
+
+      <Space>
+        <Switch checked={showPicks} onChange={toggleShowPicks} />
+        <span>显示预测方向</span>
+        <Text type="secondary">（亚盘、欧盘、大小、竞彩、竞彩让球；方向来自当时正式方案的冻结预测，不下注显示「-」；份数后面带 * 表示冻结预测没有记录份数，份数是推算值）</Text>
+      </Space>
+
       <Card styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="id"
           loading={loading}
-          columns={columns}
+          scroll={{ x: 'max-content' }}
+          columns={shownColumns}
           dataSource={items}
           pagination={false}
           locale={{

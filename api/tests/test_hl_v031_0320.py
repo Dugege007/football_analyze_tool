@@ -62,7 +62,7 @@ def _live(as_of=None, mode="rule_1110"):
 # ---------------- version / kelly 未改 ----------------
 
 def test_versions():
-    assert API_VERSION == "0.3.24" and tm.CONFIG_VERSION == "hl_v0.3.1"
+    assert API_VERSION == "0.3.26" and tm.CONFIG_VERSION == "hl_v0.3.1"
     assert tm.KELLY_HL_MARGIN == 0.02 and tm.KELLY_HL["heavy"]["threshold"] is None  # 重档仍留给 hl_v0.4
 
 

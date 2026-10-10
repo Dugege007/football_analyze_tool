@@ -43,7 +43,7 @@ def _clear_cache():
 
 
 def test_api_version():
-    assert API_VERSION == "0.3.24"
+    assert API_VERSION == "0.3.26"
 
 
 def test_x_formula_and_axis_ticks():

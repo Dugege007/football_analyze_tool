@@ -1,6 +1,6 @@
 import type { Direction, Odds } from './types'
 
-/** 从澳门结算盘取出主队亚盘口（数字；正=主受让）。 */
+/** 从澳门结算盘取出主队亚盘口（数字；库内约定是主队让球为正数、主队受让为负数）。 */
 export function extractMacauCloseHandicap(odds: Odds | null | undefined): number | null {
   const close = odds?.asian?.macau?.close
   if (close == null) return null

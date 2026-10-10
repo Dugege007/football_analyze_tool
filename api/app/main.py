@@ -28,7 +28,7 @@ TZ_CN = timezone(timedelta(hours=8))
 # 主列表: abs(now - collect_at) <= PENDING_ABS_MIN；补发: include_overdue → collect_at <= now <= kickoff
 PENDING_ABS_MIN = 30
 
-API_VERSION = "0.3.25"
+API_VERSION = "0.3.26"
 
 # D2：现网双写开关（拍板默认关；副本演练用 scripts/sync_odds_asian_from_snapshot.py）
 DUAL_WRITE_ODDS_ASIAN = os.environ.get("DUAL_WRITE_ODDS_ASIAN", "0").strip().lower() in (
@@ -532,6 +532,74 @@ def formal_strategies_for_match(conn: sqlite3.Connection, match_db_id: int) -> l
     return [r[0] for r in rows]
 
 
+# 0.3.26：赛程页五个预测方向列用的数据（只读，不重算方向）。
+# 市场代码与赛程页列名的对应：ah=亚盘，1x2=欧盘，ou=大小，jc_had=竞彩，jc_hhad=竞彩让球。
+PICK_MARKETS = ("ah", "1x2", "ou", "jc_had", "jc_hhad")
+
+
+def estimate_stake_from_rationale(rationale: list | None) -> int | None:
+    """份数推算值：冻结预测没有记录份数（predictions.stake 为空）时使用。
+
+    口径与预测页（web/src/api/messagePreview.ts 的 simplifiedStakeFromRationale）一致：
+    从依据要点里读出 dir_sum（或 bucket=SUM=）的绝对值，绝对值为 5 时推算为 2 份，
+    绝对值为 3 时推算为 1 份，其他情况无法推算，返回 None。这是推算值，不是冻结记录。
+    """
+    import re
+    for line in rationale or []:
+        if not isinstance(line, str):
+            continue
+        m = re.search(r"dir_sum\s*=\s*([+-]?\d+)", line, re.I) or re.search(
+            r"bucket=SUM=\+?(-?\d+)", line, re.I)
+        if m:
+            v = abs(int(m.group(1)))
+            return {5: 2, 3: 1}.get(v)
+    return None
+
+
+def formal_prediction_picks(conn: sqlite3.Connection, match_db_id: int) -> list[dict]:
+    """该场正式方案冻结预测的各玩法方向（只读，直接取冻结记录，不重算）。
+
+    亚盘来自 predictions 表；其他玩法来自 prediction_legs 表（仅正式方案、status=active）。
+    亚盘的 line 取结算盘口（settle_book=macau_close 时为澳门临盘），库内约定是主队视角：
+    主队让球为正数，主队受让为负数。stake_estimated=True 表示份数是推算值。
+    """
+    formal = set(formal_strategies_for_match(conn, match_db_id))
+    out: list[dict] = []
+    if not formal:
+        return out
+    close = conn.execute(
+        "SELECT handicap FROM odds_asian WHERE match_id = ? AND book = 'macau' AND phase = 'close'",
+        (match_db_id,),
+    ).fetchone()
+    for p in conn.execute(
+        "SELECT * FROM predictions WHERE match_id = ? ORDER BY strategy", (match_db_id,)
+    ).fetchall():
+        if p["strategy"] not in formal:
+            continue
+        stake = as_units(row_get(p, "stake"))
+        estimated = False
+        if p["direction"] != "不下注" and (stake is None or stake <= 0):
+            stake = estimate_stake_from_rationale(loads_json(p["rationale_json"]) or [])
+            estimated = stake is not None
+        out.append({
+            "market": "ah", "strategy": p["strategy"], "side": p["direction"],
+            "line": close["handicap"] if close else None, "line_text": None,
+            "stake": stake, "stake_estimated": estimated,
+        })
+    for leg in conn.execute(
+        "SELECT * FROM prediction_legs WHERE match_id = ? AND COALESCE(status, 'active') = 'active' "
+        "ORDER BY market, strategy, id", (match_db_id,)
+    ).fetchall():
+        if leg["strategy"] not in formal or leg["market"] not in PICK_MARKETS or leg["market"] == "ah":
+            continue
+        out.append({
+            "market": leg["market"], "strategy": leg["strategy"], "side": leg["side"],
+            "line": leg["line"], "line_text": leg["line_text"],
+            "stake": as_units(leg["stake"]), "stake_estimated": False,
+        })
+    return out
+
+
 @app.get("/matches")
 def list_matches(
     date: str = Query(..., description="竞彩日 YYYY-MM-DD"),
@@ -589,6 +657,7 @@ def list_matches(
                     "direction": row["direction"],
                     "result": build_result(conn, row["id"]),
                     "strategies": formal_strategies_for_match(conn, row["id"]),
+                    "picks": formal_prediction_picks(conn, row["id"]),
                 }
             )
         return {"date": date, "scope": scope, "items": items}

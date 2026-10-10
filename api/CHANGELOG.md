@@ -1,5 +1,9 @@
 # CHANGELOG · match-analysis-api
 
+## 0.3.26 — 2026-10-10
+
+- GET /matches 每场增加 picks 字段：正式方案冻结预测的各玩法方向（亚盘取自 predictions 表，其他玩法取自 prediction_legs 表），亚盘盘口取澳门临盘（主队让球为正数）。冻结预测没有记录份数时按预测页口径推算份数，并以 stake_estimated=true 标注。只读，不改库。
+
 ## 0.3.22 — 2026-10-08
 
 依据：协作中拍板「澳门也要水位」+ 终版规则（主列手工 / 并列 5DF / 同 lane 高亮）。

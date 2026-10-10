@@ -139,6 +139,8 @@ export interface MatchListItem {
   result?: Result | null
   /** 0.3.24：该场冻结预测所用的正式方案代码；没有预测为空数组 */
   strategies?: string[]
+  /** 0.3.26：正式方案冻结预测的各玩法方向（赛程页预测方向列与当日消息使用） */
+  picks?: import('./pickFormat').Pick[]
 }
 
 export interface MatchListResponse {

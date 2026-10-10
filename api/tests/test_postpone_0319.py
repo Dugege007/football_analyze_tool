@@ -76,7 +76,7 @@ def _validate(client, def_id: int) -> dict:
 
 
 def test_api_version():
-    assert API_VERSION == "0.3.24"
+    assert API_VERSION == "0.3.26"
 
 
 # ---------------- 1. 推迟场：目标时刻只用到当时已公布的开赛时间 ----------------

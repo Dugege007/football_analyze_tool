@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "check:licenses": "node scripts/check-licenses.mjs"
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "test": "node scripts/test-pick-format.mjs"
   },
   "dependencies": {
     "@ag-grid-community/locale": "^36.2.0",
