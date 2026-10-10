@@ -489,10 +489,13 @@ def _open_flags(cell: dict, first_tick: bool, earliest: datetime | None, sched: 
     open_time_known, backtest_eligible).
 
     first_tick: both usable flags are always true and open_time is the first record time.
-    api_opening and legacy_import: the opening time is unknown, so open_time is null. usable_at_<phase> is true
-    only when a real timestamped quote of this book (earliest_ts_quote_at) is not later than that phase's
-    decision time. Since 2026-10-10 the hand-recorded opening quote no longer assumes an earliest time of
-    11:10 on the Jingcai day: when no real timestamped quote exists, earliest_ts_quote_at stays null.
+    legacy_import (the user's hand-recorded opening quote, source_kind=manual): both usable flags are always true,
+    because by the user's rule it is the book's data at opening and opening is always earlier than the mid and
+    close stages. The opening time is unknown, so open_time is null and open_time_known is false. No 11:10 time is
+    assumed any more; earliest_ts_quote_at is a real timestamped quote of this book or null.
+    api_opening: the opening time is unknown and the interface does not guarantee the value was available before
+    the decision, so usable_at_<phase> is true only when earliest_ts_quote_at is not later than that phase's
+    decision time.
     """
     basis = cell.get("basis")
     if not cell.get("available"):
@@ -511,9 +514,13 @@ def _open_flags(cell: dict, first_tick: bool, earliest: datetime | None, sched: 
     out = {"open_basis": ob, "open_basis_reason": ob_reason,
            "earliest_ts_quote_at": _iso(earliest), "ts_inferred": ts_inferred,
            "usable_at_mid": None, "usable_at_close": None, "unusable_reason": None}
-    if ob == "first_tick":
+    if ob in ("first_tick", "legacy_import"):
+        # legacy_import is the user's hand-recorded opening quote: by the user's rule it is the book's data at
+        # opening, and opening is always earlier than the mid and close stages, so both flags are true even though
+        # the opening time itself is unknown (analyst decision 2026-10-10). Possible recording errors are checked
+        # by comparing sources (source_kind), not by marking the value unusable.
         out["usable_at_mid"] = out["usable_at_close"] = True
-    elif ob in ("api_opening", "legacy_import"):
+    elif ob == "api_opening":
         for ph in ("mid", "close"):
             tgt = _to_cn(sched.get(f"{ph}_target_time"))
             out[f"usable_at_{ph}"] = bool(earliest is not None and tgt is not None and earliest <= tgt)
@@ -541,19 +548,19 @@ def _first_own_capture_at(d: "_Data", mpk: int, book: str, market: str, as_of: d
 
 
 def finalize_ah_open(d: "_Data", mpk: int, cell: dict | None, book: str, kickoff: datetime | None,
-                     league: str | None, as_of: datetime, table: dict | None) -> None:
+                     league: str | None, as_of: datetime, table: dict | None, market: str = "asian") -> None:
     """Add first_captured_at and the truncation check to an Asian handicap opening cell.
 
     A first record from the 5DollarFootballAPI history that is later than the 95th percentile of the external
     quantile table marks the cell suspect_truncated and backtest_eligible=false. No table, no check."""
     if not cell or cell.get("status") is None:
         return
-    own = _first_own_capture_at(d, mpk, "macau" if book == MACAU_5DF_BOOK_KEY else book, "asian", as_of)
+    own = _first_own_capture_at(d, mpk, "macau" if book == MACAU_5DF_BOOK_KEY else book, market, as_of)
     cell["first_captured_at"] = _iso(own)
     trunc = None
     if cell.get("open_basis") == "first_tick":
         tb = "macau" if book in ("macau", MACAU_5DF_BOOK_KEY) else book
-        trunc = osx.truncation_check(table, tb, league, _to_cn(cell.get("open_time")), kickoff)
+        trunc = osx.truncation_check(table, tb, league, _to_cn(cell.get("open_time")), kickoff, market)
     cell.update(osx.open_status(available=cell.get("status") != osx.STATUS_MISSING,
                                 source_kind=cell.get("source_kind"), first_captured_at=cell["first_captured_at"],
                                 open_time=cell.get("open_time"), truncation=trunc))
@@ -2545,6 +2552,10 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
         for _b, _blk in ah_out.items():
             if isinstance(_blk, dict):
                 finalize_ah_open(d, mpk, _blk.get("open"), _b, kick, row["competition_name"], eff_as_of, trunc_table)
+        for _b, _blk in x_out.items():
+            if isinstance(_blk, dict):
+                finalize_ah_open(d, mpk, _blk.get("open"), _b, kick, row["competition_name"], eff_as_of, trunc_table,
+                                 market="euro_1x2")
         jc = {p: build_jc_cell(d, mpk, p, sched, eff_as_of, kick, jingcai_date=jd)
               for p in PHASES}
         jc_hhad = {p: build_jc_hhad_cell(d, mpk, p, sched, eff_as_of, jingcai_date=jd)
@@ -2743,7 +2754,7 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
                                         "(hour-only jingcai carries no natural date)",
             "open_basis": {"first_tick": "earliest timestamped API-history quote of this book/market (≤ as_of, pre-match); usable_at_mid/close = true",
                            "api_opening": "open time UNKNOWN (not guaranteed pre-decision); usable_at_X = earliest_ts_quote_at <= schedule.X_target_time (inclusive), else false + unusable_reason",
-                           "legacy_import": "user hand-recorded opening quote (same definition as the interface opening quote, source_kind=manual); opening time unknown, earliest_ts_quote_at is a real timestamped quote of this book or null (no 11:10 assumption since 2026-10-10); usable_at_X = earliest <= schedule.X_target_time (inclusive), else false + unusable_reason",
+                           "legacy_import": "user hand-recorded opening quote (same definition as the interface opening quote, source_kind=manual, status=ok); the opening time is unknown (open_time=null, open_time_known=false) and no 11:10 time is assumed; usable_at_mid and usable_at_close are always true because opening is always earlier than the mid and close stages (analyst decision 2026-10-10); possible recording errors are checked by comparing sources",
                            "status": "open only: ok = real opening quote; missing = no real opening quote (our first capture never replaces it, it is kept in alt for Jingcai cells); suspect_truncated = Asian handicap first record of the 5DollarFootballAPI history is later than the 95th percentile in config/open_truncation_quantiles.json (book plus league group, falling back to book only when samples are fewer than min_samples); no table means no check",
                            "source_kind": "open only: official_open (interface or official opening data) | manual (user hand record) | null; manual and official_open are one definition of the opening quote, separated only for per-source backtest statistics",
                            "first_captured_at": "open only: first moment we captured this book and market ourselves; never used as the opening quote",

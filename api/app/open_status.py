@@ -9,7 +9,9 @@ Every opening quote cell (China Sports Lottery Jingcai cells and Asian handicap 
 - source_kind: "official_open" (the opening value comes from an interface or official opening data),
   "manual" (the opening value was recorded by hand by the user), or null when status is "missing".
   Manual and interface opening quotes are the same definition of the opening quote; source_kind only
-  tells them apart so that backtests can count them separately.
+  tells them apart so that backtests can count them separately. A manual opening quote is the book's data at
+  opening, so its status is "ok" and it is usable at the mid and close stages even though its opening time is
+  unknown (analyst decision 2026-10-10); possible recording errors are checked by comparing sources.
 - first_captured_at: the moment we first captured this book and market ourselves (null when never).
 - open_time: the real opening time when it is known, otherwise null. Nothing is inferred.
 - open_time_known: true only when open_time is not null.
@@ -33,6 +35,10 @@ Table format (JSON):
 late_p95_lead_minutes means: in that group, 95 percent of normal matches have their first record at
 least this many minutes before kickoff. A match whose first record is fewer minutes before kickoff
 than that value (that is, later than the 95th percentile of lateness) is suspect_truncated.
+A group may carry "markets" (for example ["asian", "euro_1x2", "ou"]) to limit it to those markets.
+A bookmaker without a group is not checked (truncation_checked=false, status stays ok); no other
+bookmaker's threshold is applied to it. By definition about 5 percent of every group is marked
+suspect_truncated; that share is not the real truncation rate.
 A group with league equal to null is the fallback group for the book. A book and league group
 whose samples are fewer than min_samples is ignored and the book-only group is used instead.
 """
@@ -72,12 +78,17 @@ def load_quantile_table(path: Optional[Path] = None) -> Optional[dict]:
         return None
 
 
-def lookup_threshold(table: Optional[dict], book: str, league: Optional[str]) -> Optional[dict]:
-    """Book and league group when it has enough samples, otherwise the book-only group, otherwise None."""
+def lookup_threshold(table: Optional[dict], book: str, league: Optional[str],
+                     market: Optional[str] = None) -> Optional[dict]:
+    """Book and league group when it has enough samples, otherwise the book-only group, otherwise None.
+
+    A group may list "markets"; it then applies only to those markets. A bookmaker without any group is
+    not checked at all: no other bookmaker's threshold is ever applied to it."""
     if not table:
         return None
     min_n = int(table.get("min_samples") or DEFAULT_MIN_SAMPLES)
-    groups = table.get("groups") or []
+    groups = [g for g in (table.get("groups") or [])
+              if market is None or not g.get("markets") or market in g["markets"]]
     if league:
         for g in groups:
             if g.get("book") == book and g.get("league") == league and int(g.get("samples") or 0) >= min_n:
@@ -89,13 +100,14 @@ def lookup_threshold(table: Optional[dict], book: str, league: Optional[str]) ->
 
 
 def truncation_check(table: Optional[dict], book: str, league: Optional[str],
-                     first_record_at: Optional[datetime], kickoff: Optional[datetime]) -> dict:
+                     first_record_at: Optional[datetime], kickoff: Optional[datetime],
+                     market: Optional[str] = None) -> dict:
     """Decide whether an Asian handicap history looks truncated. Never raises."""
     if table is None:
         return {"checked": False, "reason": "quantile_table_missing", "suspect": False}
     if first_record_at is None or kickoff is None:
         return {"checked": False, "reason": "first_record_or_kickoff_unknown", "suspect": False}
-    g = lookup_threshold(table, book, league)
+    g = lookup_threshold(table, book, league, market)
     if g is None or g.get("late_p95_lead_minutes") is None:
         return {"checked": False, "reason": "no_group_for_book", "suspect": False}
     lead = (kickoff - first_record_at).total_seconds() / 60.0

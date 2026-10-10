@@ -134,7 +134,8 @@ OPEN_BASIS_BUCKETS: tuple[str, ...] = ("first_tick", "api_opening", OPEN_BASIS_U
 # 写入端另接受 legacy_import（0.3.17）；validate 分账桶不变 → legacy_import 归 unknown
 SNAPSHOT_OPEN_BASES: tuple[str, ...] = OPEN_BASES + ("legacy_import",)
 # 开盘时刻未知、需按 usable_at_<phase> 判可用的口径。legacy_import（用户手工记录的开盘数据）自 2026-10-10 起
-# 不再推定最早时间为竞彩日 11:10：开盘时间未知时 earliest_ts_quote_at 为空，usable_at_<phase> 为 false。
+# 不再推定最早时间为竞彩日 11:10；按用户规则开盘一定早于中盘和临盘，所以 /table/matches 对它恒给 usable_at_<phase>=true。
+# 它仍留在本集合里，表示写入端必须带 usable_at_<phase> 字段。
 OPEN_BASES_TIME_UNKNOWN: frozenset[str] = frozenset({"api_opening", "legacy_import"})
 # 由初盘派生、算「用到初盘」的特征名
 OPEN_DERIVED_FEATURES: frozenset[str] = frozenset({

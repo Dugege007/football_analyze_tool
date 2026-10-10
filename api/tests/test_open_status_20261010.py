@@ -126,3 +126,27 @@ def test_live_capture_1110_fills_opening_only():
     ex = json.loads(v["extras_json"])
     assert ex["api_phase"] == "opening" and ex["open_time"] is None and ex["capture"] != "own"
     assert lc.open_fill_vals({**r, "open_line_api": None}) is None
+
+
+def test_real_table_bookmakers_without_group_are_not_checked():
+    root = Path(__file__).resolve().parents[2]
+    t = json.loads((root / "config" / "open_truncation_quantiles.json").read_text(encoding="utf-8"))
+    assert t["min_samples"] == 100
+    very_late = datetime.fromisoformat("2026-06-06T19:00:00+08:00")
+    for book in ("crown", "william", "williamhill", "bet365"):
+        r = osx.truncation_check(t, book, "AnyLeague", very_late, KICK, "asian")
+        assert r["checked"] is False and r["suspect"] is False and r["reason"] == "no_group_for_book"
+        st = osx.open_status(available=True, source_kind="official_open", first_captured_at=None,
+                             open_time=very_late.isoformat(), truncation=r)
+        assert st["status"] == "ok" and st["truncation_checked"] is False and st["backtest_eligible"] is True
+    for book, thr in (("macau", 1689.0), ("pinnacle", 3448.8)):
+        for market in ("asian", "euro_1x2", "ou"):
+            r = osx.truncation_check(t, book, "AnyLeague", very_late, KICK, market)
+            assert r["checked"] and r["suspect"] and r["late_p95_lead_minutes"] == thr and r["group"] == "book_only"
+
+
+def test_market_limited_group():
+    t = {"min_samples": 100, "groups": [{"book": "macau", "league": None, "markets": ["asian"], "samples": 500,
+                                         "late_p95_lead_minutes": 100}]}
+    assert osx.lookup_threshold(t, "macau", None, "asian") is not None
+    assert osx.lookup_threshold(t, "macau", None, "euro_1x2") is None

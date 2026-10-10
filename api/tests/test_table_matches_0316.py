@@ -441,10 +441,10 @@ def test_open_legacy_import_time_unknown_and_flat_columns(db, client):
     o = _row(d, U6)["ah"]["macau"]["open"]  # hand-recorded opening quote; opening time unknown (no 11:10 assumption)
     assert o["open_basis"] == "legacy_import"
     assert o["earliest_ts_quote_at"] is None and o["ts_inferred"] is False
-    assert o["usable_at_mid"] is False and o["usable_at_close"] is False
+    # The hand-recorded opening quote is the book's data at opening, always earlier than mid and close.
+    assert o["usable_at_mid"] is True and o["usable_at_close"] is True and o["unusable_reason"] is None
     assert o["status"] == "ok" and o["source_kind"] == "manual" and o["open_time"] is None
     assert o["open_time_known"] is False
-    assert o["unusable_reason"] == "open_time_unknown_after_decision_possible"
     flat = _get(client, date_from="2026-06-06", date_to="2026-06-06", format="flat")["items"][0]
     for k in ("ah_macau_open_open_basis", "ah_macau_open_usable_at_mid", "x1x2_william_open_usable_at_close",
               "x1x2_pinnacle_open_earliest_ts_quote_at", "jc_1x2_open_open_basis", "ah_macau_open_unusable_reason"):
@@ -474,12 +474,13 @@ def _sched(jd, mid, close):
     ("2026-06-06T04:10:00+08:00", "2026-06-06T11:10:00+08:00", False, True),
 ])
 def test_open_flags_legacy_import_rule(mid, close, exp_mid, exp_close):
-    # Since 2026-10-10 the hand-recorded opening time is unknown: without a real timestamped quote both are false.
+    # Since 2026-10-10 (analyst decision): the hand-recorded opening quote is the book's data at opening, which is
+    # always earlier than mid and close, so both flags are true whatever the decision times are.
     from app import table_matches as tm
     out = tm._open_flags(_legacy_cell(), False, None, _sched("2026-06-06", mid, close))
     assert out["earliest_ts_quote_at"] is None and out["ts_inferred"] is False
-    assert (out["usable_at_mid"], out["usable_at_close"]) == (False, False)
-    assert out["unusable_reason"] == "open_time_unknown_after_decision_possible"
+    assert (out["usable_at_mid"], out["usable_at_close"]) == (True, True)
+    assert out["unusable_reason"] is None and out["open_time_known"] is False
     assert out["source_kind"] == "manual" and out["status"] == "ok" and out["open_time"] is None
 
 
