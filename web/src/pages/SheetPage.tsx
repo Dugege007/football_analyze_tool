@@ -1,3 +1,4 @@
+import { HelpTip, LabelWithHelp } from '../components/HelpTip'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -516,12 +517,10 @@ export default function SheetPage() {
           checked={debugTier}
           onChange={(v) => setEnabled((prev) => ({ ...prev, [RR_TIER_DEBUG]: v }))}
         />
-        <Text strong>档位换算也上色（仅排查用）</Text>
+        <Text strong>档位换算也上色</Text>
+        <HelpTip tip="只用于排查，默认关闭。打开后，档位中点换算的返还率格（亚盘、欧赔）和水位异动格按原阈值上色，并加红色虚线框和「排查」角标；这些颜色不进导出，也不进方案计算。生效的视图与各自规则相同。" />
         <span className="sheet-legend-swatch sheet-legend-debug-mark">轻</span>
       </Space>
-      <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
-        默认关。打开后档位中点换算的返还率格（亚盘、欧赔）和水位异动格按原阈值上色，加红色虚线框和「排查」角标；颜色不进导出，也不进方案计算。所在视图同各自规则。
-      </div>
     </div>
   )
 
@@ -530,9 +529,7 @@ export default function SheetPage() {
     <div style={{ width: 520, maxHeight: 560, overflow: 'auto' }}>
       <Space style={{ marginBottom: 8 }} wrap>
         <Tag color="blue">口径版本 {CONFIG_VERSION}</Tag>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          视图「{VIEW_LABEL[view]}」生效的规则才会着色；数字为当前筛选后、可见列里的命中格子数 / 场次
-        </Text>
+        <HelpTip tip={`只有在视图「${VIEW_LABEL[view]}」里生效的规则才会着色。每条规则右边的数字是当前筛选后、可见列里命中的格子数和场次数。`} />
       </Space>
       <Space orientation="vertical" size={2} style={{ marginBottom: 8, fontSize: 12 }}>
         <Space size={6} wrap>
@@ -560,41 +557,29 @@ export default function SheetPage() {
         </Space>
         <Space size={6} wrap>
           <span className="sheet-legend-swatch sheet-legend-rule-mark">+0.5</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            右上角「规」：{EXCEPTION_DESC}；不影响红绿字与填充
-          </Text>
+          <HelpTip tip={`格子右上角的「规」：${EXCEPTION_DESC}；不影响红绿字和填充色。`} />
           <span className="sheet-legend-swatch sheet-legend-api-mark">+0.5</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            右上角「API」：初盘来自接口开盘价，开盘时间未知；两者都有时「规」在前
-          </Text>
+          <HelpTip tip="格子右上角的「API」：初盘来自接口的开盘价，开盘时间未知。「规」和「API」都有时，「规」在前。" />
           <span className="sheet-legend-swatch">+0.5 (0.80/1.00)</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            盘口格内嵌水位「数字盘口 (主水/客水)」；主让为正（+0.5=主让半球，-0.5=主受半球）。皇冠/威廉现网多为档位中点（tier_midpoint，近似）；水位异动高亮只对 actual 真实水位上色，档位换算默认不上色（排查开关可临时上色）
-          </Text>
+          <HelpTip tip="盘口格写作「数字盘口 (主水/客水)」。主队让球为正：+0.5 表示主队让半球，-0.5 表示主队受让半球。皇冠和威廉希尔的水位在现网大多是档位中点换算的近似值；水位异动高亮只给真实水位上色，档位换算的水位默认不上色，可以用排查开关临时上色。" />
           <span className="sheet-legend-swatch" style={{ color: '#8c8c8c' }}>+0.5</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            水位按格：接口有 home/away_water 则内嵌显示；没有才悬停「暂无水位」。澳门无水位时可回落 0.95（不写死永远无；0.3.22 将并列 macau_5df 真实水位列）
-          </Text>
+          <HelpTip tip="灰字盘口表示这一格没有水位：接口返回了主水和客水时会显示在盘口后面，没有时悬停显示「暂无水位」。澳门没有水位时可以回落到 0.95。" />
           <span className="sheet-legend-swatch sheet-legend-check-mark">10:00</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            右上角灰色「核」：待核对（开赛格 = 竞彩官方时刻与开赛时间相差超过 90 分钟；即时（11:10）格 = 自采与时间线表不一致），只提示，不改颜色
-          </Text>
+          <HelpTip tip="格子右上角灰色的「核」表示待核对：开赛时间格是竞彩官方时刻与开赛时间相差超过 90 分钟；「即时（11:10）」格是自己采集的值与时间线表不一致。只做提示，不改颜色。" />
           <span className="sheet-legend-swatch" style={{ color: '#8c8c8c', fontStyle: 'italic' }}>待归阶段</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            开赛时间未确认（phase_pending）：灰字；依赖它的中盘/临盘格加悬停「按占位开赛时间推算，不参与特征计算」等
-          </Text>
+          <HelpTip tip="开赛时间还没确认时显示灰字「待归阶段」；依赖开赛时间的中盘和临盘格，悬停会提示「按占位开赛时间推算，不参与特征计算」等说明。" />
         </Space>
       </Space>
       <Space orientation="vertical" size={4} style={{ fontSize: 12 }}>
         <Space size={6}>
           <Switch size="small" checked={show1110} disabled={view !== 'snapshot'} onChange={setShow1110} />
           <span>显示「即时（11:10）」列</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>（盘口快照视图；竞彩日 11:10 规定快照）</Text>
+          <HelpTip tip="只在盘口快照视图可用。显示竞彩日 11:10 的规定快照。" />
         </Space>
         <Space size={6}>
           <Switch size="small" checked={showAllLive} disabled={view !== 'snapshot'} onChange={setShowAllLive} />
           <span>显示「即时（最新）」列</span>
-          <Text type="secondary" style={{ fontSize: 12 }}>（盘口快照视图；请求全部即时快照，较慢）</Text>
+          <HelpTip tip="只在盘口快照视图可用。会请求全部即时快照，加载较慢。" />
         </Space>
       </Space>
       <Divider style={{ margin: '8px 0' }} />
@@ -625,6 +610,7 @@ export default function SheetPage() {
                   onChange={(v) => setEnabled((prev) => ({ ...prev, [r.id]: v }))}
                 />
                 <Text strong>{r.name}</Text>
+                {r.note ? <HelpTip tip={r.note} /> : null}
                 {swatch}
                 {!ruleAvailable(r, ruleCtx) ? <Tag>暂无数据</Tag> : null}
                 {ruleAvailable(r, ruleCtx) && !inView ? <Tag>本视图不用</Tag> : null}
@@ -638,19 +624,18 @@ export default function SheetPage() {
               ) : null}
             </Space>
             <div style={{ fontSize: 12, marginTop: 2 }}>{r.condition}</div>
-            <div style={{ fontSize: 12, color: '#8c8c8c' }}>{r.note}</div>
             {r.id === 'x1x2_return_rate' ? rrDebugSwitch : null}
           </div>
         )
       })}
-      <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 8 }}>
-        术语：初盘 = 各公司第一次开出的盘（各家开盘时间不同，悬停看开盘时间）；中盘 = 开赛前 8h；临盘 = 开赛前 1h；
+      <div style={{ fontSize: 12, marginTop: 8 }}>
+        <LabelWithHelp label="术语说明" tip={<>术语：初盘 = 各公司第一次开出的盘（各家开盘时间不同，悬停看开盘时间）；中盘 = 开赛前 8h；临盘 = 开赛前 1h；
         竞彩日 11:10 的快照记为「即时（11:10）」作对照；其它时刻抓到的快照记为「即时（抓取时间）」。
         例外场（后端标记）= 所属竞彩日当晚 23:00 及以后开赛（含次日开赛）的场：中盘（规则）= 该竞彩日 15:00、临盘（规则）= 该竞彩日 22:00；打开「对照真实时点」可看中盘（真实）= 赛前 8h、临盘（真实）= 赛前 1h。
         欧赔「收盘（时间未知）」为接口收盘价，报价时刻未知，只在完赛后作参考显示，不参与任何规则。
         高亮与结算默认用（规则）。各阶段时刻由后端给出，悬停盘口格子可看「目标时间 / 抓取时间」。只比较同一阶段的快照，缺快照的格子留空不判。
         <br />
-        口径文档：odds-data/schema/v2_0-data-table-highlight-rules.md
+        口径文档：docs/schema/v2_0-data-table-highlight-rules.md</>} />
       </div>
     </div>
   )
@@ -662,10 +647,8 @@ export default function SheetPage() {
         <div>
           <Title level={3} style={{ marginBottom: 4 }}>
             数据表
+            <HelpTip tip={`盘口、预测和赛果在一张表里看全。高亮规则已经预设好（口径 ${CONFIG_VERSION}）；预测只读，已经冻结。`} />
           </Title>
-          <Text type="secondary">
-            盘口、预测与赛果一表看全；高亮规则已预设（口径 {CONFIG_VERSION}），预测只读、已冻结
-          </Text>
         </div>
         <Space wrap>
           <DataSourceSwitch value={dbSource} onChange={setDbSource} />
@@ -859,7 +842,6 @@ export default function SheetPage() {
               </span>
             </Tooltip>
           ) : null}
-          <span>数据来源：批量接口</span>
           {dailyCheck && (dailyCheck.n_matches ?? 0) > 0 ? (
             <Tooltip
               title={
@@ -889,7 +871,9 @@ export default function SheetPage() {
               <span className="sheet-debug-tip">排查模式：颜色不进导出</span>
             </Tooltip>
           ) : null}
-          <span style={{ marginLeft: 'auto' }}>右键行：复制本行 / 打开详情 · 双击行打开详情</span>
+          <span style={{ marginLeft: 'auto' }}>
+            <HelpTip tip={'右键点击一行可以复制本行或打开详情；双击一行打开详情。\n数据来源：批量接口。'} />
+          </span>
         </div>
       </div>
 

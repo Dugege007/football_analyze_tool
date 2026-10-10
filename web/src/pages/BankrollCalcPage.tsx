@@ -1,3 +1,4 @@
+import { HelpTip, LabelWithHelp } from '../components/HelpTip'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
@@ -101,18 +102,20 @@ export default function BankrollCalcPage() {
       <div>
         <Title level={3} style={{ marginBottom: 4 }}>
           注额计算器
+          <HelpTip tip="只把份数换算成金额来展示，不修改已经入库的预测。多个方案对比时请分开计算，避免共用同一天的 10 份上限。" />
         </Title>
-        <Text type="secondary">
-          只算「份 → 金额」展示，不改预测入库。多方案对比请分开计算，避免抢同一天 10 份。
-        </Text>
       </div>
 
-      <Card size="small" title="汇率展示（占位）">
+      <Card size="small" title="汇率展示">
         <Text>
           展示币种：<Tag>{fxCurrency}</Tag>
-          {fxRatesEmpty
-            ? '汇率表为空，金额仍按人民币展示；换算逻辑待汇率写入后再接。'
-            : '已读到汇率表（换算逻辑尚未接入）。'}
+          <HelpTip
+            tip={
+              fxRatesEmpty
+                ? '汇率表为空，金额仍按人民币展示；汇率写入以后再接入换算。'
+                : '已经读到汇率表，但换算逻辑还没有接入。'
+            }
+          />
         </Text>
       </Card>
 
@@ -131,7 +134,7 @@ export default function BankrollCalcPage() {
               style={{ width: 180 }}
             />
           </Form.Item>
-          <Form.Item label="剩余资金（可选）">
+          <Form.Item label={<LabelWithHelp label="剩余资金" tip="可以不填；不填时使用最新的资金快照或计算本金。" />}>
             <InputNumber
               min={0}
               step={100}

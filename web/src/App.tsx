@@ -25,7 +25,7 @@ dayjs.locale('zh-cn')
 // 数据表页依赖 AG Grid，按需加载，避免拖慢其它页面
 const SheetPage = lazy(() => import('./pages/SheetPage'))
 
-const { Header, Content, Footer } = Layout
+const { Header, Content } = Layout
 const { Text } = Typography
 
 function navKey(pathname: string): string {
@@ -104,9 +104,6 @@ function AppShell() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Content>
-      <Footer style={{ textAlign: 'center', color: '#8c8c8c', background: 'transparent' }}>
-        主清单默认竞彩 · 预测方向主/客/不下注 · 结算默认澳门收盘
-      </Footer>
     </Layout>
   )
 }

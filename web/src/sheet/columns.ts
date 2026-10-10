@@ -893,7 +893,7 @@ function x1x2Group(book: AhBook, pr: Presence, hidden: boolean): ColGroupDef<She
     // 接口收盘价：报价时刻未知，不是临盘；灰字、标参考，不进 COL_META、不参与任何规则；未完赛不显示
     children.push({
       colId: `x.${book}.closingRef`,
-      headerName: '收盘（时间未知）· 参考',
+      headerName: '收盘·参考',
       headerTooltip: '接口给的欧赔收盘价，报价时刻未知，不能当临盘用；不参与返还率、凯利和任何高亮；只在完赛后显示',
       width: 170,
       cellClass: 'sheet-ref-col',
@@ -914,7 +914,8 @@ function x1x2Group(book: AhBook, pr: Presence, hidden: boolean): ColGroupDef<She
   }
   return {
     groupId: `x.${book}`,
-    headerName: `欧赔·${BOOK_LABEL[book]}${pr.x1x2DrawAway[book] ? '' : '（仅主胜）'}`,
+    headerName: `欧赔·${BOOK_LABEL[book]}`,
+    headerTooltip: pr.x1x2DrawAway[book] ? undefined : '只有主胜赔率，缺少平和负的赔率。',
     marryChildren: true,
     children: children.map((c) => ({ ...c, hide: hidden || c.hide === true })),
   }
@@ -1117,7 +1118,7 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
   if (pr.multiAvg) {
     cols.push({
       groupId: 'multiavg',
-      headerName: '多家平均（参考）',
+      headerName: '多家平均',
       headerTooltip: '澳门/皇冠/威廉/平博各自去水后取平均；只有 4 家，噪声大，仅供参考',
       children: (['home', 'draw', 'away'] as const).map((s, i) => ({
         ...numCol(`mavg.${s}`, ['胜', '平', '负'][i] + '概率', (r) => r.multiAvgProb?.[s], 3, 76),

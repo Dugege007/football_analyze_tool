@@ -28,6 +28,7 @@ import {
   simplifiedStakeFromRationale,
 } from '../api/messagePreview'
 import type { Direction, MatchListItem, Result } from '../api/types'
+import { HelpTip, LabelWithHelp } from '../components/HelpTip'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -127,7 +128,7 @@ export default function PredictionsPage() {
       lines.push(r.header)
       lines.push(`  ${r.preview}；`)
     }
-    return lines.length ? lines.join('\n') : '（当日无可发方向，或份/盘口未齐）'
+    return lines.length ? lines.join('\n') : '当日没有可以发送的方向。'
   }, [rows])
 
   const columns: ColumnsType<Row> = [
@@ -187,11 +188,8 @@ export default function PredictionsPage() {
       <div>
         <Title level={3} style={{ marginBottom: 4 }}>
           预测
+          <HelpTip tip={`按竞彩日列出场次。默认方案是 ${DEFAULT_STRATEGY}。消息格式例如「主+0.5  x2」，不写玩法名。`} />
         </Title>
-        <Text type="secondary">
-          按竞彩日列场次 · 默认方案 {DEFAULT_STRATEGY} · 消息格式{' '}
-          <Text code>主+0.5  x2</Text>（不写玩法名）
-        </Text>
       </div>
 
       <Space wrap>
@@ -204,7 +202,7 @@ export default function PredictionsPage() {
 
       {error && <Alert type="error" showIcon message={error} />}
 
-      <Card size="small" title="当日消息预览（可复制）">
+      <Card size="small" title={<LabelWithHelp label="当日消息预览" tip="点击右侧的复制图标可以复制全部消息。" />}>
         <Paragraph
           copyable={{ text: digest }}
           style={{

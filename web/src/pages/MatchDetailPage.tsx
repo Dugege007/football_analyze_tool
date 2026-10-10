@@ -28,6 +28,7 @@ import {
 import { LEAK_SUSPECT_TAG, labelDataSource, labelSettleBook, readLedgerNote, readLeakSuspect } from '../labels'
 import { DEFAULT_STRATEGY, STRATEGY_WHITELIST } from '../api/strategies'
 import OddsWaterTimelineChart from '../components/OddsWaterTimelineChart'
+import { HelpTip, LabelWithHelp } from '../components/HelpTip'
 import { isCollectorEmpty } from '../sheet/types'
 import { apiBase, useDbSource } from '../api/dataSource'
 import type {
@@ -39,7 +40,7 @@ import type {
   Prediction,
 } from '../api/types'
 
-const { Title, Text, Paragraph } = Typography
+const { Title, Text } = Typography
 
 
 function metaLabel(
@@ -220,7 +221,7 @@ export default function MatchDetailPage() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={14}>
-          <Card title="盘口（初盘/中盘/临盘）" size="small">
+          <Card title={<LabelWithHelp label="盘口" tip="依次显示各公司的初盘、中盘、临盘。" />} size="small">
             <Table
               size="small"
               pagination={false}
@@ -238,8 +239,12 @@ export default function MatchDetailPage() {
                 style={{ marginTop: 12 }}
                 type="warning"
                 showIcon
-                title="竞彩胜平负不完整（仅主胜影子）"
-                description="来自 odds_jc_home，缺平/负；不冒充完整竞彩胜平负。表格页见灰字「竞彩胜平负不完整」。"
+                title={
+                  <LabelWithHelp
+                    label="竞彩胜平负不完整"
+                    tip="只有主胜赔率（来自主胜影子数据），缺少平和负的赔率，所以不当作完整的竞彩胜平负使用。数据表页对应位置显示灰字「竞彩胜平负不完整」。"
+                  />
+                }
               />
             )}
             {odds?.jc_hhad?.open && (
@@ -248,16 +253,24 @@ export default function MatchDetailPage() {
                 type={isCollectorEmpty(odds.jc_hhad.open.missing_reason) ? 'warning' : 'info'}
                 showIcon
                 title={
-                  isCollectorEmpty(odds.jc_hhad.open.missing_reason)
-                    ? '暂无竞彩官方数据（让球）'
-                    : `竞彩让球（详情为当前主表行） ${odds.jc_hhad.open.goal_line ?? '—'}`
+                  isCollectorEmpty(odds.jc_hhad.open.missing_reason) ? (
+                    <LabelWithHelp
+                      label="竞彩让球：-"
+                      tip="暂无竞彩官方让球数据：本地采集器未接通或尚未采集。决策时刻的让球线以数据表页的让球线和决策让球线为准。"
+                    />
+                  ) : (
+                    <LabelWithHelp
+                      label={`竞彩让球 ${odds.jc_hhad.open.goal_line ?? '—'}`}
+                      tip="这里显示的是当前主表里的竞彩让球数据。"
+                    />
+                  )
                 }
                 description={
                   isCollectorEmpty(odds.jc_hhad.open.missing_reason)
-                    ? '本地采集器未接通或尚未采集；决策时刻选线请以数据表 /table/matches 的 goal_line/decision_line 为准'
+                    ? undefined
                     : `胜 ${odds.jc_hhad.open.home ?? '—'} / 平 ${odds.jc_hhad.open.draw ?? '—'} / 负 ${odds.jc_hhad.open.away ?? '—'}${
                         odds.jc_hhad.open.post_decision_line_change
-                          ? '；决策后让球线已变（当前线仅对照）'
+                          ? '；决策后让球线已变'
                           : ''
                       }`
                 }
@@ -271,21 +284,13 @@ export default function MatchDetailPage() {
             <Descriptions column={1} size="small">
               <Descriptions.Item label="排名">
                 主 {stats.rank?.home ?? '—'} / 客 {stats.rank?.away ?? '—'}
-                {metaLabel(stats, 'rank') ? (
-                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                    （{metaLabel(stats, 'rank')}）
-                  </Text>
-                ) : null}
+                {metaLabel(stats, 'rank') ? <HelpTip tip={`数据来源：${metaLabel(stats, 'rank')}`} /> : null}
               </Descriptions.Item>
               <Descriptions.Item label="交锋场次">
                 {String(h2h.matches ?? '—')}
-                {metaLabel(stats, 'h2h') ? (
-                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                    （{metaLabel(stats, 'h2h')}）
-                  </Text>
-                ) : null}
+                {metaLabel(stats, 'h2h') ? <HelpTip tip={`数据来源：${metaLabel(stats, 'h2h')}`} /> : null}
               </Descriptions.Item>
-              <Descriptions.Item label="交锋近6（主视角）">
+              <Descriptions.Item label={<LabelWithHelp label="交锋近6" tip="主队视角的进球和失球。" />}>
                 {h2hLast6.home_gf != null
                   ? `${h2hLast6.home_gf} : ${h2hLast6.home_ga}`
                   : '—'}
@@ -293,21 +298,13 @@ export default function MatchDetailPage() {
               <Descriptions.Item label="近6进失">
                 主 {last6.home ? `${last6.home.gf}/${last6.home.ga}` : '—'} · 客{' '}
                 {last6.away ? `${last6.away.gf}/${last6.away.ga}` : '—'}
-                {metaLabel(stats, 'recent') ? (
-                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                    （{metaLabel(stats, 'recent')}）
-                  </Text>
-                ) : null}
+                {metaLabel(stats, 'recent') ? <HelpTip tip={`数据来源：${metaLabel(stats, 'recent')}`} /> : null}
               </Descriptions.Item>
               <Descriptions.Item label="伤停">
                 <Text type={stats.injury == null && stats.obs?.injury?.known_empty !== true ? 'secondary' : undefined}>
                   {formatInjury(stats)}
                 </Text>
-                {metaLabel(stats, 'injury') ? (
-                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                    （{metaLabel(stats, 'injury')}）
-                  </Text>
-                ) : null}
+                {metaLabel(stats, 'injury') ? <HelpTip tip={`数据来源：${metaLabel(stats, 'injury')}`} /> : null}
               </Descriptions.Item>
               <Descriptions.Item label="支持率代理">
                 {stats.support_proxy_odds ?? '—'}
@@ -328,7 +325,9 @@ export default function MatchDetailPage() {
           items={[
             {
               key: 'timeline',
-              label: '查看亚盘盘口阶梯与水位走势（默认平博，可切换机构）',
+              label: (
+                <LabelWithHelp label="查看亚盘盘口阶梯与水位走势" tip="默认显示平博，可以切换公司。" />
+              ),
               children: (
                 <OddsWaterTimelineChart
                   matchId={matchId}
@@ -343,7 +342,7 @@ export default function MatchDetailPage() {
       </Card>
 
       <Card
-        title="预测结论"
+        title={<LabelWithHelp label="预测结论" tip="仅供参考，不保证输赢。默认按澳门临盘结算口径展示。" />}
         size="small"
         extra={
           <Space wrap>
@@ -392,9 +391,6 @@ export default function MatchDetailPage() {
                 locale={{ emptyText: '暂无依据' }}
               />
             </div>
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              仅供参考，不保证输赢。默认按澳门收盘结算口径展示。
-            </Paragraph>
           </Space>
         ) : (
           <Empty description={predError ? `${predError}（${strategy}）` : '暂无预测'} />

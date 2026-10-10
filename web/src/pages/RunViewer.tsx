@@ -1,3 +1,4 @@
+import { LabelWithHelp } from '../components/HelpTip'
 import { useState } from 'react'
 import { Button, Card, Empty, InputNumber, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { getValidationRun, type ValidationRunDetail } from '../api/client'
@@ -48,8 +49,12 @@ export default function RunViewer({ source }: { source: DbSource }) {
   return (
     <Card
       size="small"
-      title="查看已有验证记录（只读）"
-      extra={<Typography.Text type="secondary">数据源：{DB_SOURCE_LABEL[source]}；只读取，不新建记录</Typography.Text>}
+      title={
+        <LabelWithHelp
+          label="查看已有验证记录"
+          tip={`只读取已有的验证记录，不新建记录。当前数据源：${DB_SOURCE_LABEL[source]}。`}
+        />
+      }
     >
       <Space style={{ marginBottom: 8 }}>
         <Typography.Text>验证记录编号</Typography.Text>

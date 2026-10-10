@@ -2,6 +2,8 @@
 
 本目录是 football-analyze-tool 的网页界面，使用 Vite、React、TypeScript、Ant Design、AG Grid 与 ECharts 构建，通过本地 API（`api/`）取数。
 
+界面规范（注释性说明用问号 Tooltip 显示）见 [UI-GUIDELINES.md](UI-GUIDELINES.md)。
+
 ## 页面
 
 1. 比赛列表：按竞彩日和范围（竞彩或非竞彩）列出当日赛程。

@@ -1,3 +1,4 @@
+import { HelpTip, LabelWithHelp } from './HelpTip'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Empty, Select, Slider, Space, Spin, Typography } from 'antd'
 import ReactECharts from 'echarts-for-react'
@@ -414,11 +415,12 @@ export default function OddsWaterTimelineChart({
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <Text type="secondary" style={{ flex: 1, minWidth: 240 }}>
-          展开本区块后才会请求变盘历史。默认机构为平博亚盘，可切换澳门、皇冠、威廉希尔、平博、Bet365。
-          横轴按公式「x 等于负的系数乘以 log10（距开赛剩余分钟与 1 的较大值）」绘制；调节下方滑动条只重算坐标，不会重新请求接口。
-          初盘、中盘、临盘锚点与当前机构同路（澳门叠 ah.macau_5df，不叠手工澳门；平博叠 ah.pinnacle）。
-        </Text>
+        <span style={{ flex: 1, minWidth: 240 }}>
+          <LabelWithHelp
+            label="公司"
+            tip={'展开本区块后才会请求变盘历史。默认公司为平博亚盘，可以切换澳门、皇冠、威廉希尔、平博、Bet365。\n初盘、中盘、临盘锚点与当前公司来自同一数据路径：澳门叠加接口抓取的澳门数据，不叠加手工记录的澳门数据；平博叠加平博数据。'}
+          />
+        </span>
         <Select
           size="small"
           value={book}
@@ -432,9 +434,9 @@ export default function OddsWaterTimelineChart({
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
           <Text>
             对数时间轴系数（当前 {logCoef}）
-          </Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            系数越大，曲线越向开赛端压缩；范围 {LOG_TIME_COEF_MIN}～{LOG_TIME_COEF_MAX}，默认 {DEFAULT_LOG_TIME_COEF}
+            <HelpTip
+              tip={`横轴按公式「x 等于负的系数乘以 log10（距开赛剩余分钟与 1 的较大值）」绘制；调节滑动条只重新计算坐标，不会重新请求接口。\n系数越大，曲线越向开赛端压缩。范围 ${LOG_TIME_COEF_MIN} 到 ${LOG_TIME_COEF_MAX}，默认 ${DEFAULT_LOG_TIME_COEF}。`}
+            />
           </Text>
         </div>
         <Slider
@@ -507,11 +509,13 @@ export default function OddsWaterTimelineChart({
             ) : null}
             {anchors.length ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                已叠同路锚点 {anchors.map((a) => a.label).join('／')}（ah.{anchors[0].ah_key}）
+                已叠加锚点 {anchors.map((a) => a.label).join('／')}
+                <HelpTip tip={`锚点数据路径：ah.${anchors[0].ah_key}`} />
               </Text>
             ) : (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                当前机构暂无同路初／中／临快照可叠（同路键 ah.{ahKey}）
+                锚点：-
+                <HelpTip tip={`当前公司没有同一数据路径的初盘、中盘、临盘快照可以叠加（数据路径 ah.${ahKey}）。`} />
               </Text>
             )}
             {data.notes?.length ? (

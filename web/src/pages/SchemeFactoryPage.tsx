@@ -1,6 +1,6 @@
+import { HelpTip, LabelWithHelp } from '../components/HelpTip'
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Alert,
   Button,
   Card,
   Form,
@@ -175,20 +175,23 @@ export default function SchemeFactoryPage() {
       <div>
         <Title level={3} style={{ marginBottom: 4 }}>
           方案工场
+          <HelpTip tip="可以列出方案、选模板生成新版本、做验证（复用缓存的结果或新建验证）。不影响现网的默认方案 CFFXDJ_5_V3。这里生成的方案默认是影子状态，只用于工场试跑。" />
         </Title>
-        <Text type="secondary">
-          可测：列方案 · 选模板生成新版本 · 验证（展示复用缓存 / 新建验证）。不改现网
-          CFFXDJ_5_V3 默认展示。
-        </Text>
       </div>
 
-      <Alert
-        type="info"
-        showIcon
-        message="现网默认方案仍是 CFFXDJ_5_V3；此处生成方案默认写影子状态，仅用于工场试跑。"
-      />
-
-      <Card size="small" title="从模板生成方案">
+      <Card
+        size="small"
+        title={
+          templates.length > 0 ? (
+            <LabelWithHelp
+              label="从模板生成方案"
+              tip={templates.map((t) => `${labelTemplate(t.name)}：${t.description || '—'}`).join('\n')}
+            />
+          ) : (
+            '从模板生成方案'
+          )
+        }
+      >
         <Form
           form={form}
           layout="inline"
@@ -230,11 +233,6 @@ export default function SchemeFactoryPage() {
             <Button onClick={() => void refresh()}>刷新列表</Button>
           </Form.Item>
         </Form>
-        {templates.length > 0 && (
-          <Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-            模板：{templates.map((t) => `${labelTemplate(t.name)}：${t.description || '—'}`).join('；')}
-          </Paragraph>
-        )}
       </Card>
 
       {lastValidate && (

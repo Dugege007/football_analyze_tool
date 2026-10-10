@@ -22,6 +22,15 @@ import { formatScore } from '../api/formatScore'
 import type { MatchListItem } from '../api/types'
 import { PICK_COLUMNS, formatMarketCell, hasEstimatedStake } from '../api/pickFormat'
 import { buildDailyMessage, type MessageMatch } from '../api/dailyMessageTemplate'
+import { HelpTip, LabelWithHelp } from '../components/HelpTip'
+
+const PICK_TIPS: Record<string, string> = {
+  ah: '亚盘按雷速体育的规则显示：+ 表示所下注的一方让球，- 表示所下注的一方受让。\nx 后面的数字是下注份数；份数后面带 * 表示冻结预测没有记录份数，份数是按方案规则推算的，复制出去的消息不带 *。\n不下注显示「-」。',
+  '1x2': '欧盘方向，例如「胜 x3」「平负 x1」；x 后面的数字是下注份数。不下注显示「-」。',
+  ou: '大小球方向，例如「2.25大 x2」；x 后面的数字是下注份数。不下注显示「-」。',
+  jc_had: '竞彩胜平负方向；x 后面的数字是下注份数。不下注显示「-」。',
+  jc_hhad: '竞彩让球按竞彩官方的规则显示：+ 表示主队受让，- 表示主队让球，例如「-1让负 x2」。不下注显示「-」。',
+}
 
 const SHOW_PICKS_KEY = 'schedule.showPredictionColumns'
 
@@ -135,7 +144,7 @@ export default function MatchListPage() {
       render: (_, row) => <Text strong>{row.match.teams.away}</Text>,
     },
     {
-      title: '开赛时间（北京时间）',
+      title: <LabelWithHelp label="开赛时间" tip="北京时间。分钟未知时只显示到小时。" />,
       width: 190,
       render: (_, row) => formatKickoff(row),
     },
@@ -167,8 +176,8 @@ export default function MatchListPage() {
   ]
 
   const pickColumns: ColumnsType<MatchListItem> = PICK_COLUMNS.map((c) => ({
-    title: c.title,
-    width: 104,
+    title: <LabelWithHelp label={c.title} tip={PICK_TIPS[c.market]} />,
+    width: 112,
     render: (_: unknown, row: MatchListItem) => {
       const text = formatMarketCell(row.picks, c.market)
       if (text === '-') return '-'
@@ -177,7 +186,7 @@ export default function MatchListPage() {
         <Text strong style={{ whiteSpace: 'nowrap' }}>
           {text}
           {est && (
-            <Text type="secondary" style={{ fontSize: 12 }} title="冻结预测没有记录份数，份数是按预测页口径推算的">
+            <Text type="secondary" style={{ fontSize: 12 }}>
               *
             </Text>
           )}
@@ -222,8 +231,8 @@ export default function MatchListPage() {
         <div>
           <Title level={3} style={{ marginBottom: 4 }}>
             当日赛程
+            <HelpTip tip={'默认显示北京时间今天所属的竞彩日：北京时间 00:00 到 11:30 开赛的场次属于前一个竞彩日；有竞彩编号的场次以编号里的星期为准。\n同一竞彩日内按竞彩编号升序排列；没有编号的比赛排在最后，再按开赛时间排列。\n默认只看竞彩场。'} />
           </Title>
-          <Text type="secondary">同一竞彩日内按竞彩编号升序排列；没有编号的比赛排在最后，再按开赛时间排列。默认显示北京时间今天所属的竞彩日（北京时间 00:00 到 11:30 开赛的场次属于前一个竞彩日），默认只看竞彩场。</Text>
         </div>
         <Tag color={source === 'api' ? 'success' : 'warning'}>
           {labelDataSource(source)}
@@ -255,7 +264,12 @@ export default function MatchListPage() {
         items={[
           {
             key: 'msg',
-            label: `当日消息预览（${msgAll ? msgAll.split('\n').length - 1 : 0} 场下注；只在页面上显示和复制，不会自动发送）`,
+            label: (
+              <span>
+                当日消息预览（{msgAll ? msgAll.split('\n').length - 1 : 0} 场下注）
+                <HelpTip tip="消息只在页面上显示和复制，不会自动发送。「只复制未开赛」只复制当前时间还没有开赛的场次。" />
+              </span>
+            ),
             extra: (
               <Space size={8} onClick={(e) => e.stopPropagation()}>
                 <Button size="small" onClick={() => copyText(msgAll, '复制全部')}>
@@ -284,8 +298,10 @@ export default function MatchListPage() {
 
       <Space>
         <Switch checked={showPicks} onChange={toggleShowPicks} />
-        <span>显示预测方向</span>
-        <Text type="secondary">（亚盘、欧盘、大小、竞彩、竞彩让球；方向来自当时正式方案的冻结预测，不下注显示「-」；份数后面带 * 表示冻结预测没有记录份数，份数是推算值）</Text>
+        <span>
+          显示预测方向
+          <HelpTip tip="展开亚盘、欧盘、大小、竞彩、竞彩让球五列。方向来自当时正式方案的冻结预测，不下注显示「-」。" />
+        </span>
       </Space>
 
       <Card styles={{ body: { padding: 0 } }}>

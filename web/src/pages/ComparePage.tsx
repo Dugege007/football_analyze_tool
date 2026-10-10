@@ -1,3 +1,4 @@
+import { HelpTip, LabelWithHelp } from '../components/HelpTip'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
@@ -77,7 +78,7 @@ import {
 } from '../api/dataSource'
 import { DataSourceSwitch, ReplicaBanner } from '../api/DataSourceBar'
 
-const { Title, Text, Paragraph } = Typography
+const { Title, Text } = Typography
 
 const LINE_COLORS = [
   '#1677ff',
@@ -797,6 +798,7 @@ export default function ComparePage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <Title level={3} style={{ marginTop: 0 }}>
             对比
+            <HelpTip tip="多选方案后拉取对比数据。可以打开方案叠加和结算灵敏度：结算灵敏度用同一批注单按真实水位结算，作为副表，用不同颜色的曲线叠加显示。" />
           </Title>
           <DataSourceSwitch
             value={dbSource}
@@ -807,9 +809,6 @@ export default function ComparePage() {
             }}
           />
         </div>
-        <Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          多选方案后拉取对比数据；可开启方案叠加与结算灵敏度（同注单真实水位副表，分色叠曲线）。
-        </Paragraph>
         <Space wrap style={{ width: '100%', marginBottom: 12 }} align="start">
           <Select
             mode="multiple"
@@ -839,7 +838,10 @@ export default function ComparePage() {
                 setResult(null)
               }}
             />
-            <Text type="secondary">结算灵敏度</Text>
+            <Text type="secondary">
+              结算灵敏度
+              <HelpTip tip="用同一批注单按真实水位重新结算，作为副表，用不同颜色的曲线叠加显示。" />
+            </Text>
             <Switch
               checked={includeSettlementSensitivity}
               onChange={(v) => {
@@ -928,14 +930,13 @@ export default function ComparePage() {
           ) : null
         }
       >
-        {result?.fair_compare_note ? (
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 12 }}
-            message="公平对照"
-            description={result.fair_compare_note}
-          />
+        {result?.fair_compare_note || result?.stack?.conflict_policy ? (
+          <Space wrap style={{ marginBottom: 12 }}>
+            {result?.fair_compare_note ? <LabelWithHelp label="公平对照" tip={result.fair_compare_note} /> : null}
+            {result?.stack?.conflict_policy ? (
+              <LabelWithHelp label="冲突处理" tip={result.stack.conflict_policy} />
+            ) : null}
+          </Space>
         ) : null}
         {result && (result.sensitivity || result.n_actual_water != null) ? (
           <Space wrap style={{ marginBottom: 12 }}>
@@ -962,17 +963,12 @@ export default function ComparePage() {
             type="warning"
             showIcon
             style={{ marginBottom: 12 }}
-            message={FALLBACK_RATE_WARN_HINT}
-            description="回落比例偏高，真实水位副表仅供同注单灵敏度参考，勿当作主对比结论。"
-          />
-        ) : null}
-        {result?.stack?.conflict_policy ? (
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 12 }}
-            message="冲突处理"
-            description={result.stack.conflict_policy}
+            message={
+              <LabelWithHelp
+                label={FALLBACK_RATE_WARN_HINT}
+                tip="回落比例偏高时，真实水位副表只能作为同一批注单的灵敏度参考，不要当作主要的对比结论。"
+              />
+            }
           />
         ) : null}
 
