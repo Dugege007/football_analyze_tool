@@ -41,7 +41,7 @@ REPO = HERE.parents[1]
 ODDS_DATA = Path(os.environ.get("ODDS_DATA_DIR") or "/workspace/odds-data")
 RAW_DIR = ODDS_DATA / "5dollar" / "live" / "asof_backfill" / "raw"
 SOURCE = "5df_hist_asof_full"
-BOOK_MAP = {"macauslot": "macau", "crown": "crown", "williamhill": "william", "pinnacle": "pinnacle",
+BOOK_MAP = {"chinasportslottery": "jc", "macauslot": "macau", "crown": "crown", "williamhill": "william", "pinnacle": "pinnacle",
             "bet365": "bet365"}
 MARKET_MAP = {"asian": "asian", "goalline": "ou", "1x2": "euro_1x2"}
 
@@ -61,7 +61,7 @@ def _orient_ticks(ticks: list[dict], orientation: str) -> list[dict]:
 
 def import_ticks(conn: sqlite3.Connection, match_id: int, book: str, market: str, ticks: list[dict],
                  kickoff: datetime, orientation: str, raw_path: str | None = None,
-                 raw_sha256: str | None = None, dry_run: bool = False) -> dict:
+                 raw_sha256: str | None = None, dry_run: bool = False, source: str = SOURCE) -> dict:
     """Import one bookmaker and market history for one match. Returns a small report."""
     if orientation not in ("same", "swapped"):
         return {"status": "skipped_orientation_unverified", "segments": 0}
@@ -83,7 +83,7 @@ def import_ticks(conn: sqlite3.Connection, match_id: int, book: str, market: str
             (match_id, book, market, s["seg_start_at"], s["seg_end_at"], s.get("line"), s.get("price_home"),
              s.get("price_away"), s.get("price_draw"), s.get("price_over"), s.get("price_under"),
              s.get("water_home"), s.get("water_away"), s.get("water_over"), s.get("water_under"),
-             s["tick_count"], SOURCE, "actual" if market in ("asian", "ou") else None, ex))
+             s["tick_count"], source, "actual" if market in ("asian", "ou") else None, ex))
         n += cur.rowcount
     return {"status": "inserted", "segments": n}
 

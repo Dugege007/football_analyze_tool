@@ -231,3 +231,59 @@ def test_asof_history_import_is_repeatable(tmp_path):
     assert rows[0] == (1.0, 1.76, 0.76, 2, "5df_hist_asof_full")  # swapped: sign and sides exchanged
     assert imp.import_ticks(c, 5, "macau", "asian", ticks, KICK, "swapped")["status"] == "skipped_segments_exist"
     assert imp.import_ticks(c, 6, "macau", "asian", ticks, KICK, "unverified")["segments"] == 0
+
+
+def _seg_rows(rows: list[dict]):
+    import sqlite3
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    cols = ["match_id", "book", "market", "seg_start_at", "seg_end_at", "line", "price_home", "price_draw",
+            "price_away", "price_over", "price_under", "water_home", "water_away", "water_over", "water_under",
+            "tick_count", "is_inplay", "source", "water_src"]
+    c.execute(f"CREATE TABLE t ({','.join(cols)})")
+    for r in rows:
+        c.execute(f"INSERT INTO t VALUES ({','.join('?' * len(cols))})", [r.get(k) for k in cols])
+    return list(c.execute("SELECT * FROM t"))
+
+
+def test_jc_open_from_5df_history_first_tick():
+    seg = {"match_id": 1, "book": "jc", "market": "euro_1x2", "seg_start_at": "2026-06-04T09:00:00+08:00",
+           "seg_end_at": "2026-06-05T09:00:00+08:00", "price_home": 2.01, "price_draw": 3.4, "price_away": 2.96,
+           "tick_count": 2, "is_inplay": 0, "source": "5df_hist_jc_1x2"}
+    d = _D()
+    d.timeline = {1: _seg_rows([seg])}
+    c = tm.build_jc_cell(d, 1, "open", SCHED, KICK, KICK, jingcai_date="2026-06-06")
+    assert c["available"] and c["status"] == "ok" and c["source_kind"] == "official_open"
+    assert c["quote_kind"] == "official_first" and c["open_time_known"] is True
+    assert c["open_time"] == "2026-06-04T09:00:00+08:00" and c["home"] == 2.01
+    assert c["truncation_checked"] is False and "5df_odds_history" in c["source"]
+    assert c["missing_reason"] is None
+
+
+def test_jc_history_import_swaps_home_and_away(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / "api" / "scripts"))
+    import import_jc_1x2_history_segments as jc
+    c = sqlite3.connect(":memory:")
+    c.executescript("""CREATE TABLE odds_timeline_seg (id INTEGER PRIMARY KEY, match_id INTEGER, book TEXT,
+      market TEXT, seg_start_at TEXT, seg_end_at TEXT, line REAL, price_home REAL, price_away REAL, price_draw REAL,
+      price_over REAL, price_under REAL, water_home REAL, water_away REAL, water_over REAL, water_under REAL,
+      tick_count INTEGER, compression TEXT, is_inplay INTEGER, source TEXT, water_src TEXT, extras_json TEXT,
+      UNIQUE (match_id, book, market, seg_start_at, compression));
+      CREATE TABLE matches (id INTEGER, match_uid TEXT, home_team TEXT, away_team TEXT, kickoff_at TEXT);
+      CREATE TABLE match_meta (match_id INTEGER, extras_json TEXT);""")
+    c.execute("INSERT INTO matches VALUES (9, '2026-06-06|六001', 'A', 'B', '2026-06-06T20:00:00+08:00')")
+    c.execute("INSERT INTO match_meta VALUES (9, ?)", (json.dumps({"ids": {"5df_fixture_id": "77"},
+                                                                    "home_5df": "B", "away_5df": "A"}),))
+    p = tmp_path / "77_chinasportslottery_1x2.json"
+    p.write_text(json.dumps({"data": {"ticks": [{"minute": None, "home": 2.0, "draw": 3.1, "away": 3.5,
+                                                 "recorded_at": "2026-06-04T01:00:00+00:00"}]}}), encoding="utf-8")
+    m = jc.build_mapping(c, tmp_path)
+    assert m["77"]["orientation"] == "swapped"
+    r = jc.import_file(c, p, m)
+    assert r["status"] == "inserted" and r["segments"] == 1
+    assert c.execute("SELECT price_home, price_draw, price_away, book, market, source FROM odds_timeline_seg"
+                     ).fetchone() == (3.5, 3.1, 2.0, "jc", "euro_1x2", "5df_hist_jc_1x2")
+    assert jc.import_file(c, tmp_path / "88_chinasportslottery_1x2.json", m)["status"] == "skipped_unmapped"
+    assert jc.import_file(c, p, m)["status"] == "skipped_segments_exist"

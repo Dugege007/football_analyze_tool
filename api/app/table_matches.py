@@ -349,6 +349,7 @@ def _empty_jc() -> dict:
             "out_of_window": None,  # 0.3.21：竞彩 11:10 与亚盘同窗
             "fetch_lag_min": None,
             "missing_reason": None,  # collector_empty | legacy_home_only | …
+            "quote_kind": None,  # official_first when the opening value is the official first published odds
             **PHASE_FEATURE_DEFAULTS}
 
 
@@ -1084,6 +1085,7 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
         if tgt is not None:
             _hide_by_as_of(cell, tgt, as_of)
         if phase == "open":
+            cell["quote_kind"] = "official_first"
             cell["first_captured_at"] = cap
             cell["open_time"] = had.get("open_time")
             _open_flags(cell, False, _to_cn(had.get("open_time")), sched)
@@ -1096,6 +1098,19 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
     if phase == "open":
         first, earliest = _ts_quotes(d, mpk, "jc", "euro_1x2", as_of)
     r = _x_from_snap(d, mpk, "jc", phase) if first is None else None
+    if first is not None and first[1] == "seg" and phase == "open":
+        # Since 2026-10-10 (analyst correction): the 5DollarFootballAPI odds history carries every change of the
+        # Jingcai win draw loss odds (bookmaker chinasportslottery, market 1x2). Its first pre-match record is the
+        # official first published odds, taken the same way as the first Asian handicap segment.
+        _fill_from_seg(cell, first[2], "euro_1x2")
+        cell["jc_1x2_incomplete"] = not cell.get("complete")
+        cell["missing_reason"] = None if cell.get("complete") else "jc_1x2_incomplete"
+        cell["quote_kind"] = "official_first"
+        cell["source"] = f"5df_odds_history/chinasportslottery/1x2 ({first[2]['source']})"
+        _open_flags(cell, True, earliest, sched)
+        # Fewer than 100 Jingcai matches so far: no truncation check, and no other bookmaker's threshold.
+        cell.update({"truncation_checked": False, "truncation_reason": "jc_no_quantile_group"})
+        return _mark_no_data(cell)
     if first is not None and first[1] == "seg":
         _fill_from_seg(cell, first[2], "euro_1x2")
         cell["jc_1x2_incomplete"] = not cell.get("complete")
