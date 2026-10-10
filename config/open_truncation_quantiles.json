@@ -1,0 +1,37 @@
+{
+  "_comment": "Asian handicap, European odds (1x2) and over/under opening truncation thresholds. Source files: /workspace/odds-data/schema/v2_0-open-lead-time-distribution-20261010.md and v2_0-open-lead-time-distribution-20261010.csv, supplied by the football analyst; generated on 2026-10-10. Grouped by bookmaker only (no league grouping this time); min_samples = 100. late_p95_lead_minutes = the P5 column of the Asian handicap row of that bookmaker (hours, converted to minutes by multiplying by 60): Macau 28.15 hours = 1689.0 minutes, Pinnacle 57.48 hours = 3448.8 minutes. The European odds and over/under markets of these two bookmakers reuse their Asian handicap thresholds. Crown, William Hill and Bet365 have no group on purpose: their samples are fewer than 100, so their opening quotes are not checked (truncation_checked = false, status stays ok); no other bookmaker's threshold is applied to them. By definition about 5 percent of every group is marked suspect_truncated; that share is not the real truncation rate.",
+  "source_files": [
+    "/workspace/odds-data/schema/v2_0-open-lead-time-distribution-20261010.md",
+    "/workspace/odds-data/schema/v2_0-open-lead-time-distribution-20261010.csv"
+  ],
+  "generated_on": "2026-10-10",
+  "min_samples": 100,
+  "groups": [
+    {
+      "book": "macau",
+      "book_5df": "macauslot",
+      "league": null,
+      "markets": [
+        "asian",
+        "euro_1x2",
+        "ou"
+      ],
+      "samples": 4384,
+      "p5_lead_hours": 28.15,
+      "late_p95_lead_minutes": 1689.0
+    },
+    {
+      "book": "pinnacle",
+      "book_5df": "pinnacle",
+      "league": null,
+      "markets": [
+        "asian",
+        "euro_1x2",
+        "ou"
+      ],
+      "samples": 4445,
+      "p5_lead_hours": 57.48,
+      "late_p95_lead_minutes": 3448.8
+    }
+  ]
+}

@@ -38,6 +38,7 @@ from app import db as app_db
 from app import kickoff_drift as kd
 from app import leak_suspect as leak
 from app import fundamentals as fund  # 0.3.21
+from app import open_status as osx  # opening status and source fields (user rule 2026-10-10)
 
 router = APIRouter(tags=["table"])
 
@@ -348,6 +349,7 @@ def _empty_jc() -> dict:
             "out_of_window": None,  # 0.3.21：竞彩 11:10 与亚盘同窗
             "fetch_lag_min": None,
             "missing_reason": None,  # collector_empty | legacy_home_only | …
+            "quote_kind": None,  # official_first when the opening value is the official first published odds
             **PHASE_FEATURE_DEFAULTS}
 
 
@@ -429,6 +431,20 @@ def _snap_basis(r: sqlite3.Row, phase: str) -> tuple[str, bool]:
 OPEN_UNUSABLE_REASON = "open_time_unknown_after_decision_possible"
 
 
+RESCUE_SOURCES = frozenset({"5df_hist_asof"})
+RESCUE_CAPTURES = frozenset({"asof_hist"})
+
+
+def _is_rescue_row(r: sqlite3.Row) -> bool:
+    """A row written by the rescue for a missed stage (one as-of history tick, for example point=mid):
+    source=5df_hist_asof, capture=asof_hist or asof_backfill=true. It is never an opening quote candidate
+    (analyst finding 2026-10-10), the same way as our own captures."""
+    ex = _loads(r["extras_json"])
+    src = r["source"] if "source" in r.keys() else None
+    return (src in RESCUE_SOURCES or ex.get("source") in RESCUE_SOURCES
+            or ex.get("capture") in RESCUE_CAPTURES or ex.get("asof_backfill") is True)
+
+
 def _is_own_capture(r: sqlite3.Row) -> bool:
     """我们自己抓的快照（如竞彩日 11:10）：计入 earliest_ts_quote_at，但不当 first_tick 初盘（术语文档 api_opening 节）。"""
     ex = _loads(r["extras_json"])
@@ -460,7 +476,7 @@ def _ts_quotes(d: "_Data", mpk: int, book: str, market: str, as_of: datetime
         ts = _to_cn(r["recorded_at"])
         if ts is None or ts > as_of:
             continue
-        if _is_own_capture(r):
+        if _is_own_capture(r) or _is_rescue_row(r):
             earliest = ts if earliest is None or ts < earliest else earliest
             continue
         if first is None or ts < first[0]:
@@ -470,14 +486,31 @@ def _ts_quotes(d: "_Data", mpk: int, book: str, market: str, as_of: datetime
     return first, earliest
 
 
-def _open_flags(cell: dict, first_tick: bool, earliest: datetime | None, sched: dict) -> dict:
-    """初盘对象的 open_basis / earliest_ts_quote_at / usable_at_mid / usable_at_close / unusable_reason。
+# Bases that are only our own first capture, never a real opening quote (user rule 2026-10-10).
+OWN_FIRST_SEEN_BASES = frozenset({"first_seen_capture"})
 
-    first_tick → 两个 usable 恒 true；api_opening（开盘时刻未知，**不保证**早于决策点）→ 仅当本家最早带时间戳报价
-    ≤ 该阶段决策时刻（schedule.mid/close_target_time，含端）才 true，否则 false + unusable_reason；
-    legacy_import（旧手工、时刻未知；0.3.17 分析师决策 4 + 用户更正「不一刀切 true」）→ earliest_ts_quote_at 推定为
-    该竞彩日 11:10（ts_inferred=true；若本家有更早的真实带时间戳报价则用真实值、ts_inferred=false），
-    usable 规则与 api_opening 完全相同（earliest ≤ 该阶段 target_at，含端）。
+
+def _open_source_kind(basis: str | None) -> str | None:
+    """manual for the user's hand-recorded opening quotes, official_open for interface or official data,
+    None when the value is only our own first capture (that value must not replace the opening quote)."""
+    if basis is None or basis in OWN_FIRST_SEEN_BASES:
+        return None
+    return osx.SOURCE_MANUAL if basis == "legacy_import" else osx.SOURCE_OFFICIAL_OPEN
+
+
+def _open_flags(cell: dict, first_tick: bool, earliest: datetime | None, sched: dict) -> dict:
+    """Opening cell fields: open_basis, earliest_ts_quote_at, usable_at_mid, usable_at_close, unusable_reason,
+    plus the opening status fields from app.open_status (status, source_kind, first_captured_at, open_time,
+    open_time_known, backtest_eligible).
+
+    first_tick: both usable flags are always true and open_time is the first record time.
+    legacy_import (the user's hand-recorded opening quote, source_kind=manual): both usable flags are always true,
+    because by the user's rule it is the book's data at opening and opening is always earlier than the mid and
+    close stages. The opening time is unknown, so open_time is null and open_time_known is false. No 11:10 time is
+    assumed any more; earliest_ts_quote_at is a real timestamped quote of this book or null.
+    api_opening: the opening time is unknown and the interface does not guarantee the value was available before
+    the decision, so usable_at_<phase> is true only when earliest_ts_quote_at is not later than that phase's
+    decision time.
     """
     basis = cell.get("basis")
     if not cell.get("available"):
@@ -487,32 +520,69 @@ def _open_flags(cell: dict, first_tick: bool, earliest: datetime | None, sched: 
     elif basis == "api_opening":
         ob = "api_opening"
     else:
-        ob = basis  # legacy_import 等
+        ob = basis  # legacy_import and other bases
     ts_inferred = None
-    if ob == "legacy_import":
-        inferred = _to_cn(sched.get("live_rule_1110_target_time"))  # 竞彩日 11:10
-        if earliest is not None and (inferred is None or earliest < inferred):
-            ts_inferred = False
-        elif inferred is not None:
-            earliest, ts_inferred = inferred, True
-    elif ob is not None:
-        ts_inferred = False
-    # 0.3.17：open_basis 为空时必须给原因（无初盘数据 / 被 as_of 隐藏）
+    if ob is not None:
+        ts_inferred = False  # nothing is inferred any more (user rule 2026-10-10)
     ob_reason = None if ob is not None else (
         "after_as_of" if cell.get("hidden_reason") == "after_as_of" else "no_open_data")
     out = {"open_basis": ob, "open_basis_reason": ob_reason,
            "earliest_ts_quote_at": _iso(earliest), "ts_inferred": ts_inferred,
            "usable_at_mid": None, "usable_at_close": None, "unusable_reason": None}
-    if ob == "first_tick":
+    if ob in ("first_tick", "legacy_import"):
+        # legacy_import is the user's hand-recorded opening quote: by the user's rule it is the book's data at
+        # opening, and opening is always earlier than the mid and close stages, so both flags are true even though
+        # the opening time itself is unknown (analyst decision 2026-10-10). Possible recording errors are checked
+        # by comparing sources (source_kind), not by marking the value unusable.
         out["usable_at_mid"] = out["usable_at_close"] = True
-    elif ob in ("api_opening", "legacy_import"):
+    elif ob == "api_opening":
         for ph in ("mid", "close"):
             tgt = _to_cn(sched.get(f"{ph}_target_time"))
             out[f"usable_at_{ph}"] = bool(earliest is not None and tgt is not None and earliest <= tgt)
         if not (out["usable_at_mid"] and out["usable_at_close"]):
             out["unusable_reason"] = OPEN_UNUSABLE_REASON
     cell.update(out)
+    kind = _open_source_kind(basis) if cell.get("available") else None
+    open_time = cell.get("recorded_at") if ob == "first_tick" else None
+    cell.update(osx.open_status(available=bool(cell.get("available")) and kind is not None,
+                                source_kind=kind, first_captured_at=cell.get("first_captured_at"),
+                                open_time=open_time))
     return cell
+
+
+def _first_own_capture_at(d: "_Data", mpk: int, book: str, market: str, as_of: datetime) -> datetime | None:
+    """Earliest moment we captured this book and market ourselves (own capture rows), not later than as_of."""
+    best = None
+    for r in d.snap_by_match.get(mpk, []):
+        if r["book"] != book or r["market"] != market or not _is_own_capture(r):
+            continue
+        ts = _to_cn(r["recorded_at"])
+        if ts is not None and ts <= as_of and (best is None or ts < best):
+            best = ts
+    return best
+
+
+def finalize_ah_open(d: "_Data", mpk: int, cell: dict | None, book: str, kickoff: datetime | None,
+                     league: str | None, as_of: datetime, table: dict | None, market: str = "asian",
+                     match_uid: str | None = None) -> None:
+    """Add first_captured_at and the truncation check to an Asian handicap opening cell.
+
+    A first record from the 5DollarFootballAPI history that is later than the 95th percentile of the external
+    quantile table marks the cell suspect_truncated and backtest_eligible=false. No table, no check."""
+    if not cell or cell.get("status") is None:
+        return
+    own = _first_own_capture_at(d, mpk, "macau" if book == MACAU_5DF_BOOK_KEY else book, market, as_of)
+    cell["first_captured_at"] = _iso(own)
+    trunc = None
+    if cell.get("open_basis") == "first_tick" and str(match_uid or "").startswith("probe:"):
+        # Probe matches are test imports, not regular collection; they are not part of the truncation check.
+        trunc = {"checked": False, "reason": "probe_match", "suspect": False}
+    elif cell.get("open_basis") == "first_tick":
+        tb = "macau" if book in ("macau", MACAU_5DF_BOOK_KEY) else book
+        trunc = osx.truncation_check(table, tb, league, _to_cn(cell.get("open_time")), kickoff, market)
+    cell.update(osx.open_status(available=cell.get("status") != osx.STATUS_MISSING,
+                                source_kind=cell.get("source_kind"), first_captured_at=cell["first_captured_at"],
+                                open_time=cell.get("open_time"), truncation=trunc))
 
 
 def _fill_from_seg(cell: dict, s: sqlite3.Row, market: str) -> None:
@@ -949,6 +1019,18 @@ def build_x_cell(d: _Data, mpk: int, book: str, phase: str, sched: dict,
     return _mark_no_data(cell)
 
 
+# Markers that say a Jingcai opening row is the official first published odds (for example read from the
+# China Sports Lottery odds history, the earliest entry). Rows without such a marker are only our first capture.
+JC_OFFICIAL_FIRST_KINDS = frozenset({"official_first"})
+JC_ALT_KEYS = ("home", "draw", "away", "goal_line", "captured_at", "kind", "source_kind")
+
+
+def is_jc_official_first(row: dict) -> bool:
+    ex = _loads(row.get("extras_json")) if isinstance(row.get("extras_json"), str) else (row.get("extras_json") or {})
+    return (row.get("quote_kind") in JC_OFFICIAL_FIRST_KINDS
+            or (isinstance(ex, dict) and ex.get("quote_kind") in JC_OFFICIAL_FIRST_KINDS))
+
+
 def _row_to_jc_dict(r: sqlite3.Row | dict) -> dict:
     if isinstance(r, sqlite3.Row):
         r = dict(r)
@@ -959,8 +1041,10 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
                   kickoff: datetime | None, *, jingcai_date: str | None = None) -> dict:
     """0.3.21：优先 odds_jc_had；仅 odds_jc_home → jc_1x2_incomplete；禁止单边当完整盘。
 
-    竞彩 11:10（phase 映射到 instant / live_rule_1110 由调用方用 phase=…；本格 open/mid/close）：
-    若 source 行为 rule_1110／instant_1110 且 captured 超窗 → out_of_window=true，不当主值。
+    Since 2026-10-10 (user rule) the Jingcai opening quote is the official first published odds only.
+    A row captured by us at 11:10 (or at any other moment) is not an opening quote: when the opening row is
+    not marked as the official first quote, the cell is status=missing, the captured value is kept only in
+    alt, and its capture time goes to first_captured_at. The old 11:00 to 11:20 window check is removed.
     """
     cell = _empty_jc()
     # 1) 完整 had 表
@@ -972,24 +1056,17 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
         cap = had.get("captured_at")
         oow = None
         lag = None
-        # instant_1110 阶段名或 extras
-        is_1110 = phase in ("instant_1110",) or (
-            isinstance(had.get("extras_json"), str) and "rule_1110" in (had.get("extras_json") or "")
-        )
-        if jingcai_date and (is_1110 or phase == "open" and had.get("target_at") and "T11:10" in str(had.get("target_at"))):
-            in_win, lag = fund.jc_1110_in_window(cap, jingcai_date)
-            oow = not in_win
-        if oow:
+        if phase == "open" and not is_jc_official_first(had):
             cell.update({
                 "available": False, "complete": False, "jc_1x2_incomplete": incomplete,
-                "out_of_window": True, "fetch_lag_min": lag,
-                "captured_at": cap, "recorded_at": cap, "target_at": had.get("target_at"),
-                "source": had.get("source"), "basis": "sporttery_local_out_of_window",
-                "missing_reason": "jc_1110_out_of_window",
+                "captured_at": cap, "recorded_at": None, "target_at": had.get("target_at"),
+                "source": had.get("source"), "basis": "first_seen_capture",
+                "missing_reason": "jc_official_first_quote_missing", "first_captured_at": cap,
                 "home": None, "draw": None, "away": None,
                 "alt": {"home": _r(home, 4), "draw": _r(draw, 4), "away": _r(away, 4),
-                        "captured_at": cap, "fetch_lag_min": lag, "out_of_window": True},
+                        "captured_at": cap, "kind": "first_seen_capture"},
             })
+            _open_flags(cell, False, None, sched)
             return _mark_no_data(cell)
         cell.update({
             "home": _r(home, 4), "draw": _r(draw, 4), "away": _r(away, 4),
@@ -1009,7 +1086,12 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
         if tgt is not None:
             _hide_by_as_of(cell, tgt, as_of)
         if phase == "open":
-            _open_flags(cell, False, _to_cn(cap), sched)
+            cell["quote_kind"] = "official_first"
+            cell["first_captured_at"] = cap
+            cell["open_time"] = had.get("open_time")
+            _open_flags(cell, False, _to_cn(had.get("open_time")), sched)
+            if had.get("open_time"):
+                cell.update({"open_time": had.get("open_time"), "open_time_known": True})
         return _mark_no_data(cell)
 
     # 2) 旧探针 snapshot jc/euro_1x2：不当正式竞彩官方（仍可读，但不标 complete 官方）
@@ -1017,6 +1099,23 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
     if phase == "open":
         first, earliest = _ts_quotes(d, mpk, "jc", "euro_1x2", as_of)
     r = _x_from_snap(d, mpk, "jc", phase) if first is None else None
+    if first is not None and first[1] == "seg" and phase == "open":
+        # Since 2026-10-10 (analyst correction): the 5DollarFootballAPI odds history carries every change of the
+        # Jingcai win draw loss odds (bookmaker chinasportslottery, market 1x2). Its first pre-match record is the
+        # official first published odds, taken the same way as the first Asian handicap segment.
+        _fill_from_seg(cell, first[2], "euro_1x2")
+        cell["jc_1x2_incomplete"] = not cell.get("complete")
+        cell["missing_reason"] = None if cell.get("complete") else "jc_1x2_incomplete"
+        cell["quote_kind"] = "official_first"
+        cell["source"] = f"5df_odds_history/chinasportslottery/1x2 ({first[2]['source']})"
+        _open_flags(cell, True, earliest, sched)
+        # Fewer than 100 Jingcai matches so far: no truncation check, and no other bookmaker's threshold.
+        cell.update({"truncation_checked": False, "truncation_reason": "jc_no_quantile_group"})
+        hw = d.legacy_jc.get((mpk, "open")) if getattr(d, "legacy_jc", None) is not None else None
+        if hw is not None:  # the hand-recorded home win odds stay beside the 5DF opening for comparison
+            cell["alt"] = {"home": _r(hw, 4), "draw": None, "away": None, "kind": "legacy_home_only",
+                           "source_kind": "manual"}
+        return _mark_no_data(cell)
     if first is not None and first[1] == "seg":
         _fill_from_seg(cell, first[2], "euro_1x2")
         cell["jc_1x2_incomplete"] = not cell.get("complete")
@@ -1032,6 +1131,18 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
     elif phase in ("open", "close", "mid"):
         # 3) legacy home_only → incomplete，禁止当完整盘
         hw = d.legacy_jc.get((mpk, phase))
+        if hw is not None and phase == "open":
+            # Analyst decision 2026-10-10: a hand-recorded Jingcai opening with only the home win odds is not a
+            # complete opening quote. It is missing and excluded from backtests; the home value stays in alt.
+            cell.update({"home": None, "draw": None, "away": None, "basis": "legacy_import",
+                         "source": "odds_jc_home(home_only)", "available": False, "target_at": None,
+                         "complete": False, "jc_1x2_incomplete": True, "missing_reason": "legacy_home_only",
+                         "water_source": None,
+                         "alt": {"home": _r(hw, 4), "draw": None, "away": None, "kind": "legacy_home_only",
+                                 "source_kind": "manual"}})
+            _open_flags(cell, False, None, sched)
+            cell.update({"status": osx.STATUS_MISSING, "source_kind": None, "backtest_eligible": False})
+            return _mark_no_data(cell)
         if hw is not None:
             cell.update({"home": _r(hw, 4), "draw": None, "away": None,
                          "basis": "legacy_import",
@@ -1097,25 +1208,20 @@ def build_jc_hhad_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datet
     home, draw, away = sel.get("home"), sel.get("draw"), sel.get("away")
     incomplete = bool(sel.get("jc_1x2_incomplete")) or fund.jc_incomplete(home, draw, away)
     cap = sel.get("captured_at")
-    # 11:10 超窗
     oow = None
     lag = None
     tgt = (main_d or {}).get("target_at") if main_d else None
-    if jingcai_date and tgt and "T11:10" in str(tgt):
-        in_win, lag = fund.jc_1110_in_window(cap, jingcai_date)
-        oow = not in_win
-        if oow:
-            cell.update({
-                "available": False, "complete": False, "jc_1x2_incomplete": incomplete,
-                "out_of_window": True, "fetch_lag_min": lag, "captured_at": cap,
-                "missing_reason": "jc_1110_out_of_window",
-                "decision_line": sel.get("decision_line"), "current_line": sel.get("current_line"),
-                "post_decision_line_change": cell["post_decision_line_change"],
-                "alt": {"goal_line": sel.get("decision_line"), "home": _r(home, 4),
-                        "draw": _r(draw, 4), "away": _r(away, 4),
-                        "captured_at": cap, "out_of_window": True, "fetch_lag_min": lag},
-            })
-            return cell
+    # Since 2026-10-10 the opening quote of the handicap market is the official first published odds only.
+    if phase == "open" and not is_jc_official_first(main_d or {}):
+        cell.update({
+            "available": False, "complete": False, "jc_1x2_incomplete": incomplete,
+            "captured_at": cap, "first_captured_at": cap, "basis": "first_seen_capture",
+            "missing_reason": "jc_official_first_quote_missing",
+            "alt": {"goal_line": sel.get("decision_line"), "home": _r(home, 4), "draw": _r(draw, 4),
+                    "away": _r(away, 4), "captured_at": cap, "kind": "first_seen_capture"},
+        })
+        cell.update(osx.open_status(available=False, source_kind=None, first_captured_at=cap, open_time=None))
+        return cell
     cell.update({
         "goal_line": sel.get("decision_line"), "decision_line": sel.get("decision_line"),
         "home": _r(home, 4), "draw": _r(draw, 4), "away": _r(away, 4),
@@ -1608,7 +1714,18 @@ class AhCell(_M_):
     open_basis: Optional[str] = None  # 仅 open：first_tick | api_opening | legacy_import
     open_basis_reason: Optional[str] = None  # 0.3.17：open_basis=null 时 no_open_data | after_as_of
     earliest_ts_quote_at: Optional[str] = None
-    ts_inferred: Optional[bool] = None  # 0.3.17：legacy_import 的 earliest 为推定的竞彩日 11:10 → true
+    ts_inferred: Optional[bool] = None  # Since 2026-10-10 nothing is inferred: false whenever open_basis is set
+    status: Optional[str] = None  # only open: ok | missing | suspect_truncated (user rule 2026-10-10)
+    source_kind: Optional[str] = None  # only open: official_open | manual | null
+    first_captured_at: Optional[str] = None  # only open: first moment we captured this book and market ourselves
+    open_time: Optional[str] = None  # only open: real opening time, null when unknown
+    open_time_known: Optional[bool] = None  # only open
+    backtest_eligible: Optional[bool] = None  # only open: false unless status is ok
+    truncation_checked: Optional[bool] = None  # only Asian handicap open: whether the quantile table check ran
+    truncation_reason: Optional[str] = None  # only open: why the check did not run
+    truncation_group: Optional[str] = None  # only open: book_league | book_only
+    first_record_lead_minutes: Optional[float] = None  # only open: minutes between the first record and kickoff
+    late_p95_lead_minutes: Optional[float] = None  # only open: threshold read from the quantile table
     usable_at_mid: Optional[bool] = None
     usable_at_close: Optional[bool] = None
     unusable_reason: Optional[str] = None
@@ -1703,7 +1820,18 @@ class X1x2Cell(_M_):
     open_basis: Optional[str] = None  # 仅 open：first_tick | api_opening | legacy_import
     open_basis_reason: Optional[str] = None  # 0.3.17：open_basis=null 时 no_open_data | after_as_of
     earliest_ts_quote_at: Optional[str] = None
-    ts_inferred: Optional[bool] = None  # 0.3.17：legacy_import 的 earliest 为推定的竞彩日 11:10 → true
+    ts_inferred: Optional[bool] = None  # Since 2026-10-10 nothing is inferred: false whenever open_basis is set
+    status: Optional[str] = None  # only open: ok | missing | suspect_truncated (user rule 2026-10-10)
+    source_kind: Optional[str] = None  # only open: official_open | manual | null
+    first_captured_at: Optional[str] = None  # only open: first moment we captured this book and market ourselves
+    open_time: Optional[str] = None  # only open: real opening time, null when unknown
+    open_time_known: Optional[bool] = None  # only open
+    backtest_eligible: Optional[bool] = None  # only open: false unless status is ok
+    truncation_checked: Optional[bool] = None  # only Asian handicap open: whether the quantile table check ran
+    truncation_reason: Optional[str] = None  # only open: why the check did not run
+    truncation_group: Optional[str] = None  # only open: book_league | book_only
+    first_record_lead_minutes: Optional[float] = None  # only open: minutes between the first record and kickoff
+    late_p95_lead_minutes: Optional[float] = None  # only open: threshold read from the quantile table
     usable_at_mid: Optional[bool] = None
     usable_at_close: Optional[bool] = None
     unusable_reason: Optional[str] = None
@@ -1766,7 +1894,18 @@ class JcCell(_M_):
     open_basis: Optional[str] = None  # 仅 open：first_tick | api_opening | legacy_import
     open_basis_reason: Optional[str] = None  # 0.3.17：open_basis=null 时 no_open_data | after_as_of
     earliest_ts_quote_at: Optional[str] = None
-    ts_inferred: Optional[bool] = None  # 0.3.17：legacy_import 的 earliest 为推定的竞彩日 11:10 → true
+    ts_inferred: Optional[bool] = None  # Since 2026-10-10 nothing is inferred: false whenever open_basis is set
+    status: Optional[str] = None  # only open: ok | missing | suspect_truncated (user rule 2026-10-10)
+    source_kind: Optional[str] = None  # only open: official_open | manual | null
+    first_captured_at: Optional[str] = None  # only open: first moment we captured this book and market ourselves
+    open_time: Optional[str] = None  # only open: real opening time, null when unknown
+    open_time_known: Optional[bool] = None  # only open
+    backtest_eligible: Optional[bool] = None  # only open: false unless status is ok
+    truncation_checked: Optional[bool] = None  # only Asian handicap open: whether the quantile table check ran
+    truncation_reason: Optional[str] = None  # only open: why the check did not run
+    truncation_group: Optional[str] = None  # only open: book_league | book_only
+    first_record_lead_minutes: Optional[float] = None  # only open: minutes between the first record and kickoff
+    late_p95_lead_minutes: Optional[float] = None  # only open: threshold read from the quantile table
     usable_at_mid: Optional[bool] = None
     usable_at_close: Optional[bool] = None
     unusable_reason: Optional[str] = None
@@ -2167,7 +2306,7 @@ _RR_KEYS = ("return_rate", "return_rate_baseline", "return_rate_baseline_n", "re
             "baseline_method", "fallback_p10", "fallback_p25", "fallback_p90", "fallback_n", "fallback_hl_eligible",
             "fallback_hl_level")
 _OPEN_KEYS = ("open_basis", "open_basis_reason", "earliest_ts_quote_at", "ts_inferred", "usable_at_mid", "usable_at_close",
-              "unusable_reason")
+              "unusable_reason") + osx.OPEN_STATUS_FIELDS
 _KELLY_KEYS = ("kelly", "kelly_base", "kelly_base_n_books", "kelly_multi_avg", "multi_avg_n_books", "n_avg")
 
 
@@ -2176,6 +2315,20 @@ def _stable(item: dict) -> dict:
     it = json.loads(json.dumps(item))
     live_blank = _blank(LiveEntry)
     tri = _blank(Triple)
+    # Opening status fields (user rule 2026-10-10): every opening cell carries the same keys.
+    _open_cells = [it["ah"][b].get("open") for b in it.get("ah", {}) if isinstance(it["ah"][b], dict)] + \
+        [it["x1x2"][b].get("open") for b in it.get("x1x2", {}) if isinstance(it["x1x2"][b], dict)] + \
+        [(it.get("jc_1x2") or {}).get("open"), (it.get("jc_hhad") or {}).get("open")]
+    for c in _open_cells:
+        if isinstance(c, dict):
+            for fk, fv in osx.blank_open_status().items():
+                c.setdefault(fk, fv)
+    # Jingcai cells: alt always has the same keys (flat columns stay fixed), null when there is no alternative.
+    for blk in (it.get("jc_1x2") or {}, it.get("jc_hhad") or {}):
+        for c in blk.values():
+            if isinstance(c, dict):
+                a = c.get("alt") if isinstance(c.get("alt"), dict) else {}
+                c["alt"] = {ak: a.get(ak) for ak in JC_ALT_KEYS}
     for b in BOOKS:
         for rp in REAL_PHASES:
             if it["ah"][b].get(rp) is None:
@@ -2365,6 +2518,7 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
     results = {r["match_id"]: r for r in conn.execute("SELECT * FROM results")}
 
     items: list[dict] = []
+    trunc_table = osx.load_quantile_table()  # None when the analyst has not supplied the table
     for row in rows:
         mpk = row["id"]
         kick, has_ka, sched, ah, x, extras, ah_macau_5df = cells_cache[mpk]
@@ -2451,6 +2605,14 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
         ah_out[MACAU_5DF_BOOK_KEY]["mid_real"] = None
         ah_out[MACAU_5DF_BOOK_KEY]["close_real"] = None
         ah_out[MACAU_5DF_BOOK_KEY]["last_prematch"] = None
+        for _b, _blk in ah_out.items():
+            if isinstance(_blk, dict):
+                finalize_ah_open(d, mpk, _blk.get("open"), _b, kick, row["competition_name"], eff_as_of, trunc_table,
+                                 match_uid=row["match_uid"])
+        for _b, _blk in x_out.items():
+            if isinstance(_blk, dict):
+                finalize_ah_open(d, mpk, _blk.get("open"), _b, kick, row["competition_name"], eff_as_of, trunc_table,
+                                 market="euro_1x2", match_uid=row["match_uid"])
         jc = {p: build_jc_cell(d, mpk, p, sched, eff_as_of, kick, jingcai_date=jd)
               for p in PHASES}
         jc_hhad = {p: build_jc_hhad_cell(d, mpk, p, sched, eff_as_of, jingcai_date=jd)
@@ -2649,7 +2811,12 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
                                         "(hour-only jingcai carries no natural date)",
             "open_basis": {"first_tick": "earliest timestamped API-history quote of this book/market (≤ as_of, pre-match); usable_at_mid/close = true",
                            "api_opening": "open time UNKNOWN (not guaranteed pre-decision); usable_at_X = earliest_ts_quote_at <= schedule.X_target_time (inclusive), else false + unusable_reason",
-                           "legacy_import": "old manual import, quote time unknown; earliest_ts_quote_at inferred = jingcai_date 11:10 (ts_inferred=true; a real earlier timestamped quote wins, ts_inferred=false); usable_at_X = same rule as api_opening (earliest <= schedule.X_target_time, inclusive), else false + unusable_reason",
+                           "legacy_import": "user hand-recorded opening quote (same definition as the interface opening quote, source_kind=manual, status=ok); the opening time is unknown (open_time=null, open_time_known=false) and no 11:10 time is assumed; usable_at_mid and usable_at_close are always true because opening is always earlier than the mid and close stages (analyst decision 2026-10-10); possible recording errors are checked by comparing sources",
+                           "status": "open only: ok = real opening quote; missing = no real opening quote (our first capture never replaces it, it is kept in alt for Jingcai cells); suspect_truncated = Asian handicap first record of the 5DollarFootballAPI history is later than the 95th percentile in config/open_truncation_quantiles.json (book plus league group, falling back to book only when samples are fewer than min_samples); no table means no check",
+                           "source_kind": "open only: official_open (interface or official opening data) | manual (user hand record) | null; manual and official_open are one definition of the opening quote, separated only for per-source backtest statistics",
+                           "first_captured_at": "open only: first moment we captured this book and market ourselves; never used as the opening quote",
+                           "open_time": "open only: real opening time; null when unknown (open_time_known=false)",
+                           "backtest_eligible": "open only: false unless status = ok",
                            "earliest_ts_quote_at": "earliest timestamped quote incl. own captures (11:10); own captures never become first_tick",
                            "feature_rule": "any feature/strategy use of open-derived values MUST require usable_at_mid / usable_at_close; duration fields (minutes_since_open) are null for api_opening"},
             "api_closing": "1x2 api_closing never merged into close / return rate / kelly; "

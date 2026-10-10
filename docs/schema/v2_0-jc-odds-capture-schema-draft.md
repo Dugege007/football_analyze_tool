@@ -2,6 +2,40 @@
 
 > **用户 2026-10-10 更正（优先于本文其他内容）**：「初盘」只有一个定义，就是各家公司开盘时的数据；竞彩日 11:10 只是我们去取数据的时间，不是一种盘口。本文中把 11:10 快照写成「即时（11:10）」、`rule_1110` 阶段、`include_live=rule_1110` 或 `live_rule_1110_*` 字段的内容，从 v0.1.9 起全部作废，只作历史记录保留。数据库里已有的 11:10 快照不删除，库结构不改。完整定义见 `v2_0-odds-phase-terminology.md` 开头一节。
 
+> **用户 2026-10-10 规则：竞彩初盘等于官方第一次开出的赔率（本节优先于本文其他内容）**
+>
+> 1. 竞彩初盘（胜平负和让球胜平负都是）只认中国体育彩票官方第一次开出的赔率。我们在竞彩日 11:10 或其他任何时刻第一次抓到的赔率，都不是初盘。
+> 2. 后端 `/table/matches` 的 `jc_1x2.open` 和 `jc_hhad.open`：只有当数据行带有官方首开标记（数据行或其扩展字段 `extras_json` 中 `quote_kind = "official_first"`）时才作为初盘显示，`status = ok`、`source_kind = official_open`。没有该标记时，格子为 `status = missing`（初盘缺失）、`available = false`、`missing_reason = jc_official_first_quote_missing`；我们抓到的值只放在 `alt` 里（`alt.kind = first_seen_capture`），抓取时刻写在 `first_captured_at`，不顶替初盘。原来对 `target_at` 含 `T11:10` 的初盘行所做的 11:00 至 11:20 窗口检查已删除。
+> 3. 所有初盘格子（竞彩和亚盘）统一带以下字段：`status`（`ok`、`missing`、`suspect_truncated`）、`source_kind`（`official_open`、`manual`、空值）、`first_captured_at`（我们首次采集的时刻）、`open_time`（开盘时间，未知时为空值）、`open_time_known`、`backtest_eligible`（`status` 不是 `ok` 时为 false）。手工初盘与接口初盘是同一个定义，只用 `source_kind` 区分来源，回测时可以按来源分开统计。手工初盘就是机构开盘时的数据，开盘一定早于中盘和临盘，所以它的 `usable_at_mid` 与 `usable_at_close` 恒为 true、`status = ok`，开盘时间未知时 `open_time` 为空值（分析师 2026-10-10 拍板）。亚盘和欧盘初盘的截断判定读取 `config/open_truncation_quantiles.json`：第一条记录离开赛的提前时间短于该机构提前时间的第 5 百分位，就标为疑似截断。2026-10-10 的正式表只按机构分组，目前只有澳门和平博有阈值；探针场次和补救行不参与判定。按定义，每组都会有大约 5% 被标成 `suspect_truncated`（疑似截断），这个比例不代表真实的截断率。
+> 4. 采集设计改为：采集器应当读取官方赔率变化历史，取最早一条作为初盘，写入 `phase = open`、`quote_kind = official_first`，并把该条记录的官方发布时间写入 `open_time`。11:10 的取数不再另存成一种盘口。
+>
+> **分析师更正（2026-10-10 晚）：竞彩胜平负初盘取 5DollarFootballAPI 历史的第一笔**
+>
+> 1. 5DollarFootballAPI 的 `odds/history` 有竞彩胜平负的逐笔变化（`bookmaker = chinasportslottery`，`market = 1x2`）。导入后存在 `odds_timeline_seg`，`book = jc`、`market = euro_1x2`、`source = 5df_hist_jc_1x2`（导入脚本 `api/scripts/import_jc_1x2_history_segments.py`）。
+> 2. 竞彩胜平负初盘取开赛前的第一笔，做法和亚盘取时间线第一段一致：`status = ok`、`source_kind = official_open`、`quote_kind = official_first`、`open_time` 等于第一笔的记录时间、`open_time_known = true`，`source` 写明「5df_odds_history/chinasportslottery/1x2」。
+> 3. 竞彩目前只有 85 场历史样本，少于 100 场，所以竞彩初盘不做截断判定（`truncation_checked = false`，`truncation_reason = jc_no_quantile_group`）。分位表没有竞彩分组，代码也不套用其他机构的阈值。
+> 4. 竞彩让球胜平负保持缺失：5DollarFootballAPI 文档写明其他竞彩玩法不提供（other Jingcai markets are not carried），官方接口也没有历史。
+> 5. 官方接口调研结论（只作记录；用户 2026-10-10 决定暂不接官方接口）：官方 `getMatchCalculatorV1` 只有当前值（含 `updateTime`，`sellInitialDate` 为空），`getFixedBonusV1` 返回 403。根据 `hf`、`df`、`af` 推断首次赔率的思路暂不实现，记为待验证。
+>
+> **官方接口调研结果（2026-10-10，本机只读探测）**
+>
+> | 地址 | 用途（来源） | 本机探测结果 |
+> |---|---|---|
+> | `https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry`（参数例如 `poolCode=hhad,had&channel=c`） | 官方赔率计算器页面 `https://m.sporttery.cn/mjc/jsq/zqspf/` 使用的公开网页接口，只给当前赔率和涨跌标志（开源项目 Johnserf-Seed/SportteryAPI 与 coryeleven/sporttery-advisor-skill 的说明）。 | 返回腾讯云 EdgeOne 安全拦截页面（HTML），没有拿到 JSON。 |
+> | `https://webapi.sporttery.cn/gateway/jc/football/getFixedBonusV1.qry?clientCode=3001&matchId=<官方场次编号>` | 单场固定奖金接口，社区代码（吾爱破解论坛帖子 thread-1989366）用它按场次读取各玩法赔率。网上有说法称其中含有赔率变化历史列表，但本次没有找到可靠来源列出字段名。 | 返回 HTTP 567 与 EdgeOne「Restricted Access」拦截页面，没有拿到 JSON。 |
+>
+> 结论：赔率变化历史与官方首开赔率的接口地址只有线索，**字段名、是否包含首开那一条、发布时间精度、调用频率限制全部未验证**，本文不写任何未经验证的字段名。需要在没有被屏蔽的网络（例如用户 MSI 电脑上的本地采集器）上实际请求一次 `getFixedBonusV1`，保存原始响应后再定字段映射。
+>
+> **用户 2026-10-10 决定暂不接官方接口**
+>
+> 1. 竞彩官方接口（`getMatchCalculatorV1`、`getFixedBonusV1`）暂不接入，也不在用户 MSI 电脑上的采集器里试接。上面的调研结果只作记录。
+> 2. 竞彩胜平负初盘只取 5DollarFootballAPI 历史开赛前的第一笔（见上一节）。
+> 3. 竞彩让球胜平负保持初盘缺失（`status = missing`）。
+> 4. 5DollarFootballAPI 的 `chinasportslottery` 只支持 `1x2`、`asian`、`goalline`、`corner` 四种玩法，没有让球胜平负。
+> 5. `asian` 对老场次和今天的场次都返回空的 ticks。
+> 6. `1x2` 有变化记录，是竞彩胜平负初盘的唯一来源。
+> 7. 竞彩胜平负历史另建单独的补数队列，补数节奏见 `docs/schema/v2_0-jc-1x2-history-backfill-pacing-plan.md`（待分析师确认）。
+
 
 > **状态**：方案草案，供后端落地。先落 **v2d3 副本**，`DUAL_WRITE` **关**，不写现网 `app.db`。  
 > **日期**：2026-10-08 18:56 UTC+8  

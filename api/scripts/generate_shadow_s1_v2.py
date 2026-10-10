@@ -8,8 +8,9 @@
 - 规则（同 S1，prediction-landing-cards.md）：
   B1 |澳门 open 盘 − 皇冠 open 盘| ≤ S1.line_dev_max；B2 open = mid = close 盘；
   B3 上盘水位 open/mid/close 都在 [S1.upper_water_lo, S1.upper_water_hi]（阈值见 config/strategy_params.json）；B4 上盘可定（平手约定主队）→ 买下盘，按 macau_close 结算。
-- 初盘口径：澳门 open = first_tick（usable 恒 true）；皇冠 open = legacy_import，earliest 推定竞彩日 11:10，
-  usable_at_close = 11:10 ≤ close target_at（与 /table/matches 同规则），否则跳过并计数。
+- 初盘口径：澳门 open = first_tick（usable 恒 true）；皇冠 open = legacy_import（用户手工记录的开盘数据）。
+  按用户规则，手工初盘就是机构开盘时的数据，开盘一定早于中盘和临盘，所以 usable_at_mid 和 usable_at_close
+  恒为 true（分析师 2026-10-10 拍板）；开盘时间未知，但不再推定为竞彩日 11:10。数值可能记错的问题通过分来源对照来查。
 - as-of：mid/close 快照 recorded_at ≤ target_at < 开赛；open recorded_at ≤ close target_at；否则跳过。
 用法：.venv/bin/python scripts/generate_shadow_s1_v2.py --db data/v2d3/app.db [--dry-run]
 """
@@ -88,10 +89,9 @@ def generate(conn) -> tuple[list[dict], dict]:
                 r_mid <= t_mid and r_close <= t_close and t_close < kick and r_open <= t_close):
             stats["asof_violation"] += 1
             continue
-        earliest_crown = datetime.fromisoformat(m["jingcai_date"]).replace(hour=11, minute=10, tzinfo=TZ)
-        if not earliest_crown <= t_close:
-            stats["crown_open_unusable"] += 1
-            continue
+        # The hand-recorded Crown opening quote is the book's data at opening, which is always earlier than the
+        # mid and close stages, so it is usable at close (analyst decision 2026-10-10). Its opening time is unknown
+        # and no 11:10 time is assumed. The counter crown_open_unusable is kept in the statistics and stays zero.
         stats["feature_ready"] += 1
         lo, lm, lc = float(so["line"]), float(sm["line"]), float(sc["line"])
         baseline = -float(co["handicap"]) if co["handicap"] else 0.0  # odds_asian 正=主让 → API 记法
@@ -119,8 +119,10 @@ def generate(conn) -> tuple[list[dict], dict]:
             "exception_rule": EXCEPTION_RULE,  # 0.3.18：例外场按竞彩编号判
             "settle_odds_synced_to_snapshot": "resync_0318",  # 0.3.18 D：结算 odds_asian = 特征快照同一盘
             "baseline_book": "crown", "baseline_phase": "open", "baseline_line_api": baseline,
-            "baseline_open_basis": "legacy_import", "baseline_earliest_ts_quote_at": earliest_crown.isoformat(),
-            "baseline_ts_inferred": True, "baseline_usable_at_close": True,
+            "baseline_open_basis": "legacy_import", "baseline_source_kind": "manual",
+            # The hand-recorded opening time is unknown; no 11:10 time is written any more (2026-10-10).
+            "baseline_earliest_ts_quote_at": None, "baseline_open_time": None, "baseline_open_time_known": False,
+            "baseline_ts_inferred": False, "baseline_usable_at_close": True,
             "feature_book": "macau", "water_src": "actual", "source": "odds_snapshot/rule (5df_macauslot_history)",
             "open_basis": "first_tick", "open_features_used": ["open_line", "open_odds"],
             "usable_at_mid": True, "usable_at_close": True,
