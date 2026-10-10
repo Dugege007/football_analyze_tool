@@ -6,15 +6,18 @@
 
 - 竞彩初盘（`jc_1x2.open`、`jc_hhad.open`）只认官方第一次开出的赔率：数据行带 `quote_kind = "official_first"` 标记才显示为初盘；否则 `status = missing`，我们抓到的值只放在 `alt`（`alt.kind = first_seen_capture`），抓取时刻写在 `first_captured_at`。删除对初盘 11:10 行的 11:00 至 11:20 窗口检查。
 - 所有初盘格子（亚盘、欧赔、竞彩）新增字段，供前端接入：
-  - `status`：`ok`（有真实初盘）、`missing`（初盘缺失，禁止用首次采集的数据顶替）、`suspect_truncated`（疑似截断，仅亚盘）。
+  - `status`：`ok`（有真实初盘）、`missing`（初盘缺失，禁止用首次采集的数据顶替）、`suspect_truncated`（疑似截断；亚盘和欧盘的初盘格子都做判定）。
   - `source_kind`：`official_open`（接口或官方开盘数据）、`manual`（用户手工记录）、空值。手工初盘与接口初盘是同一个定义，只用本字段区分来源。
   - `first_captured_at`：我们首次采集该机构该市场的时刻。
   - `open_time`：开盘时间，未知时为空值；`open_time_known`：`open_time` 不为空时为 true。
   - `backtest_eligible`：`status` 不是 `ok` 时为 false，回测应排除。
   - `truncation_checked`、`truncation_reason`、`truncation_group`、`first_record_lead_minutes`、`late_p95_lead_minutes`：亚盘截断判定的结果。
-- 亚盘截断判定：读取分析师提供的分位表 `config/open_truncation_quantiles.json`（可用环境变量 `OPEN_TRUNCATION_QUANTILES_PATH` 改路径；格式见 `config/open_truncation_quantiles.example.json` 与 `app/open_status.py`）。按「机构加联赛」分组，样本数少于 `min_samples` 时退回「仅按机构」；5DollarFootballAPI 历史第一条记录晚于该组 95% 分位即标 `suspect_truncated`。分位表文件不存在时不做截断判定。后端不计算分位表。
+- 亚盘截断判定：读取分析师提供的分位表 `config/open_truncation_quantiles.json`（可用环境变量 `OPEN_TRUNCATION_QUANTILES_PATH` 改路径；格式见 `config/open_truncation_quantiles.example.json` 与 `app/open_status.py`）。按「机构加联赛」分组，样本数少于 `min_samples` 时退回「仅按机构」；第一条记录离开赛的提前时间短于该组提前时间的第 5 百分位，即标 `suspect_truncated`（2026-10-10 的正式表只按机构分组）。分位表文件不存在时不做截断判定。后端不计算分位表。
 - 手工初盘不再假设最早时间为竞彩日 11:10：没有真实带时间戳报价时 `earliest_ts_quote_at` 为空值、`ts_inferred` 为 false。按用户规则，手工初盘（`source_kind = manual`）就是机构开盘时的数据，开盘一定早于中盘和临盘，所以 `usable_at_mid` 与 `usable_at_close` 恒为 true、`status = ok`、`open_time` 为空值、`open_time_known` 为 false（分析师 2026-10-10 拍板）。数值可能记错的问题通过分来源对照来查，不再判为不可用。旧 39 场冻结预测（策略 CFFXDJ_5_V3）的预测哈希、结算结果与验证摘要在改动前后完全一致。
 - `scripts/generate_shadow_s1_v2.py`：皇冠手工初盘恒可用，不再写推定的 11:10 时刻；预测理由中的 `baseline_earliest_ts_quote_at` 改为空值，`baseline_ts_inferred` 改为 false，新增 `baseline_source_kind = manual`、`baseline_open_time = null`、`baseline_open_time_known = false`。在研究副本的临时拷贝上与 main 3294ed4 对比：触发 31 场，场次集合、方向、盘口和水位完全一致，统计计数完全一致，只有上述理由字段不同。
+- 补救行不再当初盘候选（分析师 2026-10-10 查明）：中盘漏采时补写的补救行（`source = 5df_hist_asof`、`capture = asof_hist`，以及所有 `asof_backfill = true` 的行）和我们自己的采集行一样，排除出初盘候选，只计入 `earliest_ts_quote_at`。探针场次（`match_uid` 以 `probe:` 开头）不参与截断判定（`truncation_reason = probe_match`）。
+- 新脚本 `api/scripts/import_asof_history_segments.py`：把中盘补救已经下载的整段历史（`odds-data/5dollar/live/asof_backfill/raw/`）按变盘点导入 `odds_timeline_seg`（`source = 5df_hist_asof_full`），口径沿用 `import_odds_timeline_probe.py`，可以重复执行，不写 `odds_asian`，不调用接口。`scripts/live/asof_backfill_mid_rule.py` 以后每次补救都把拉到的整段历史一起入库。研究副本已导入 28 场、3042 个分段。
+- `scripts/live/live_capture.py`：11:10 补初盘去重时，时间线表里已有该场该机构该市场的赛前分段也算已有初盘，不再补 `5df_live_opening` 行；显示时时间线也始终优先。
 - 正式分位表 `config/open_truncation_quantiles.json`：来源为分析师的 `/workspace/odds-data/schema/v2_0-open-lead-time-distribution-20261010.md` 与同名 CSV，生成日期 2026-10-10；`min_samples = 100`；只按机构分组，不按联赛分组。澳门阈值为亚盘 P5 提前 28.15 小时（1689.0 分钟），平博为 57.48 小时（3448.8 分钟），两家的欧盘和大小球沿用各自亚盘的阈值。皇冠、威廉希尔和 Bet365 没有分组，不判截断（`truncation_checked = false`，`status` 保持 `ok`），不套用其他机构的阈值。按定义，每组都会有大约 5% 被标成疑似截断，这个比例不代表真实的截断率。分位表的分组可以带 `markets` 列表，只对列出的市场生效；欧盘初盘格子现在也做同样的截断判定。
 - `scripts/live/live_capture.py`：11:10 照常取数，但入库时不再写 `rule_1110` 快照，只在副本中该场、该机构、该市场还没有初盘时，用接口返回的开盘字段补一行初盘（`source = 5df_live_opening`，`api_phase = opening`，`open_time` 为空值）。库里已有的 `rule_1110` 行不删除。
 

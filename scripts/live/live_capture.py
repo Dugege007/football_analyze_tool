@@ -962,6 +962,10 @@ def orientation(conn, m: sqlite3.Row, home5: str, away5: str) -> str:
 LIVE_1110_OPEN_SOURCE = "5df_live_opening"
 
 
+def _has_table(conn, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+
 def open_fill_vals(r: dict) -> dict | None:
     """User rule 2026-10-10: the 11:10 fetch is no longer stored as a stage of its own (rule_1110 or instant).
     It only fills each book's opening quote, taken from the interface "opening" field of that fetch, and only
@@ -1116,8 +1120,13 @@ def ingest(D: str, db: Path = REPLICA_DB, dry_run=False, create_missing_matches:
                 if ov is None:
                     setst(r, "live_1110_no_opening_field")
                     continue
+                # An opening quote already exists either as an opening snapshot row or as the first pre-match
+                # segment of the timeline (the timeline always wins in display); then nothing is added.
                 if conn.execute("SELECT 1 FROM odds_snapshot WHERE match_id=? AND book=? AND market=? AND point='open'",
-                                (ov["match_id"], ov["book"], ov["market"])).fetchone():
+                                (ov["match_id"], ov["book"], ov["market"])).fetchone() or (
+                        _has_table(conn, "odds_timeline_seg") and conn.execute(
+                            "SELECT 1 FROM odds_timeline_seg WHERE match_id=? AND book=? AND market=? AND is_inplay=0"
+                            " LIMIT 1", (ov["match_id"], ov["book"], ov["market"])).fetchone()):
                     setst(r, "live_1110_opening_already_present")
                     continue
                 undo.append({"op": "upsert", "old": None, "key": [ov[k] for k in

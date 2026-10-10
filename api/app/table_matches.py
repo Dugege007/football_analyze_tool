@@ -430,6 +430,20 @@ def _snap_basis(r: sqlite3.Row, phase: str) -> tuple[str, bool]:
 OPEN_UNUSABLE_REASON = "open_time_unknown_after_decision_possible"
 
 
+RESCUE_SOURCES = frozenset({"5df_hist_asof"})
+RESCUE_CAPTURES = frozenset({"asof_hist"})
+
+
+def _is_rescue_row(r: sqlite3.Row) -> bool:
+    """A row written by the rescue for a missed stage (one as-of history tick, for example point=mid):
+    source=5df_hist_asof, capture=asof_hist or asof_backfill=true. It is never an opening quote candidate
+    (analyst finding 2026-10-10), the same way as our own captures."""
+    ex = _loads(r["extras_json"])
+    src = r["source"] if "source" in r.keys() else None
+    return (src in RESCUE_SOURCES or ex.get("source") in RESCUE_SOURCES
+            or ex.get("capture") in RESCUE_CAPTURES or ex.get("asof_backfill") is True)
+
+
 def _is_own_capture(r: sqlite3.Row) -> bool:
     """我们自己抓的快照（如竞彩日 11:10）：计入 earliest_ts_quote_at，但不当 first_tick 初盘（术语文档 api_opening 节）。"""
     ex = _loads(r["extras_json"])
@@ -461,7 +475,7 @@ def _ts_quotes(d: "_Data", mpk: int, book: str, market: str, as_of: datetime
         ts = _to_cn(r["recorded_at"])
         if ts is None or ts > as_of:
             continue
-        if _is_own_capture(r):
+        if _is_own_capture(r) or _is_rescue_row(r):
             earliest = ts if earliest is None or ts < earliest else earliest
             continue
         if first is None or ts < first[0]:
@@ -548,7 +562,8 @@ def _first_own_capture_at(d: "_Data", mpk: int, book: str, market: str, as_of: d
 
 
 def finalize_ah_open(d: "_Data", mpk: int, cell: dict | None, book: str, kickoff: datetime | None,
-                     league: str | None, as_of: datetime, table: dict | None, market: str = "asian") -> None:
+                     league: str | None, as_of: datetime, table: dict | None, market: str = "asian",
+                     match_uid: str | None = None) -> None:
     """Add first_captured_at and the truncation check to an Asian handicap opening cell.
 
     A first record from the 5DollarFootballAPI history that is later than the 95th percentile of the external
@@ -558,7 +573,10 @@ def finalize_ah_open(d: "_Data", mpk: int, cell: dict | None, book: str, kickoff
     own = _first_own_capture_at(d, mpk, "macau" if book == MACAU_5DF_BOOK_KEY else book, market, as_of)
     cell["first_captured_at"] = _iso(own)
     trunc = None
-    if cell.get("open_basis") == "first_tick":
+    if cell.get("open_basis") == "first_tick" and str(match_uid or "").startswith("probe:"):
+        # Probe matches are test imports, not regular collection; they are not part of the truncation check.
+        trunc = {"checked": False, "reason": "probe_match", "suspect": False}
+    elif cell.get("open_basis") == "first_tick":
         tb = "macau" if book in ("macau", MACAU_5DF_BOOK_KEY) else book
         trunc = osx.truncation_check(table, tb, league, _to_cn(cell.get("open_time")), kickoff, market)
     cell.update(osx.open_status(available=cell.get("status") != osx.STATUS_MISSING,
@@ -2551,11 +2569,12 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
         ah_out[MACAU_5DF_BOOK_KEY]["last_prematch"] = None
         for _b, _blk in ah_out.items():
             if isinstance(_blk, dict):
-                finalize_ah_open(d, mpk, _blk.get("open"), _b, kick, row["competition_name"], eff_as_of, trunc_table)
+                finalize_ah_open(d, mpk, _blk.get("open"), _b, kick, row["competition_name"], eff_as_of, trunc_table,
+                                 match_uid=row["match_uid"])
         for _b, _blk in x_out.items():
             if isinstance(_blk, dict):
                 finalize_ah_open(d, mpk, _blk.get("open"), _b, kick, row["competition_name"], eff_as_of, trunc_table,
-                                 market="euro_1x2")
+                                 market="euro_1x2", match_uid=row["match_uid"])
         jc = {p: build_jc_cell(d, mpk, p, sched, eff_as_of, kick, jingcai_date=jd)
               for p in PHASES}
         jc_hhad = {p: build_jc_hhad_cell(d, mpk, p, sched, eff_as_of, jingcai_date=jd)

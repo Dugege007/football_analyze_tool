@@ -222,6 +222,18 @@ def state_path(D: str) -> Path:
     return D_STATE / f"captured_{D}.json"
 
 
+def _import_full_history(conn, match_id: int, book: str, ticks: list[dict], kick, orient: str,
+                         raw_path: str | None) -> dict:
+    """Import the whole fetched history into odds_timeline_seg (see api/scripts/import_asof_history_segments.py).
+    A failure never stops the rescue itself; it is only reported."""
+    try:
+        sys.path.insert(0, str(API_ROOT / "scripts"))
+        from import_asof_history_segments import import_ticks
+        return import_ticks(conn, match_id, book, "asian", ticks, kick, orient, raw_path)
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "error": f"{type(e).__name__}: {e}"}
+
+
 def fetch_hist(cl: HistClient, fid: int, slug: str, use_cache: bool = True) -> tuple[str, list[dict], dict]:
     """返回 (status, ticks, meta)。status: ok|empty|http_N|error"""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
@@ -571,6 +583,10 @@ def run(D: str, keys: list[str] | None, missed_mid_rule: bool, db: Path, dry_run
                         report["backup"] = str(backup_replica(db))
                         need_backup = False
                     bstat["result"] = upsert_snapshot(conn, vals)
+                    # Since 2026-10-10: the full history fetched for this rescue also goes into odds_timeline_seg,
+                    # so that the first record of the match is not mistaken for a late (truncated) opening.
+                    bstat["timeline_import"] = _import_full_history(conn, mid_row["id"], book, ticks, kick, orient,
+                                                                    meta.get("path"))
                 trep["books"][book] = bstat
 
             # 目标级汇总

@@ -79,6 +79,8 @@ class _D:
         self.jc_hhad = hhad or {}
         self.jc_hhad_hist = {}
         self.legacy_jc = {}
+        self.legacy_asian = {}
+        self.legacy_euro = {}
         self.timeline = {}
         self.snap_by_match = {}
         self.snap = {}
@@ -150,3 +152,82 @@ def test_market_limited_group():
                                          "late_p95_lead_minutes": 100}]}
     assert osx.lookup_threshold(t, "macau", None, "asian") is not None
     assert osx.lookup_threshold(t, "macau", None, "euro_1x2") is None
+
+
+def _snap_rows(rows: list[dict]):
+    import sqlite3
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    cols = ["match_id", "book", "market", "channel", "point", "recorded_at", "target_at", "line", "water_home",
+            "water_away", "water_censored", "water_src", "source", "extras_json"]
+    c.execute(f"CREATE TABLE s ({','.join(cols)})")
+    for r in rows:
+        c.execute(f"INSERT INTO s VALUES ({','.join('?' * len(cols))})", [r.get(k) for k in cols])
+    return list(c.execute("SELECT * FROM s"))
+
+
+def test_rescue_row_is_never_the_opening_quote():
+    rescue = {"match_id": 1, "book": "pinnacle", "market": "asian", "channel": "rule", "point": "mid",
+              "recorded_at": "2026-10-06T16:12:03+08:00", "target_at": "2026-10-09T07:30:00+08:00", "line": -0.5,
+              "water_home": 0.9, "water_away": 0.95, "water_src": "actual", "source": "5df_hist_asof",
+              "extras_json": json.dumps({"capture": "asof_hist", "asof_backfill": True})}
+    flagged_only = {**rescue, "source": "other", "extras_json": json.dumps({"asof_backfill": True})}
+    for row in (rescue, flagged_only):
+        d = _D()
+        d.snap_by_match = {1: _snap_rows([row])}
+        as_of = datetime.fromisoformat("2026-10-09T07:00:00+08:00")
+        first, earliest = tm._ts_quotes(d, 1, "pinnacle", "asian", as_of)
+        assert first is None and earliest is not None
+        c = tm.build_ah_cell(d, 1, "pinnacle", "open", SCHED, as_of, KICK)
+        assert c["status"] == "missing" and c["open_basis"] is None
+
+
+def test_rescue_row_with_interface_opening_uses_the_opening_field():
+    rescue = {"match_id": 1, "book": "pinnacle", "market": "asian", "channel": "rule", "point": "mid",
+              "recorded_at": "2026-10-06T16:12:03+08:00", "line": -0.5, "water_home": 0.9, "water_away": 0.95,
+              "water_src": "actual", "source": "5df_hist_asof", "extras_json": json.dumps({"capture": "asof_hist"})}
+    opening = {"match_id": 1, "book": "pinnacle", "market": "asian", "channel": "rule", "point": "open",
+               "recorded_at": None, "line": -0.25, "water_home": 0.88, "water_away": 0.97, "water_src": "actual",
+               "source": "5df_odds_snap", "extras_json": json.dumps({"api_phase": "opening"})}
+    d = _D()
+    rows = _snap_rows([rescue, opening])
+    d.snap_by_match = {1: rows}
+    d.snap = {(1, "pinnacle", "asian", "rule", "open"): rows[1]}
+    as_of = datetime.fromisoformat("2026-10-09T07:00:00+08:00")
+    c = tm.build_ah_cell(d, 1, "pinnacle", "open", SCHED, as_of, KICK)
+    assert c["open_basis"] == "api_opening" and c["line"] == 0.25 and c["source_kind"] == "official_open"
+
+
+def test_probe_match_is_not_truncation_checked():
+    cell = {"status": "ok", "source_kind": "official_open", "open_basis": "first_tick",
+            "open_time": "2026-06-06T19:00:00+08:00"}
+    d = _D()
+    tm.finalize_ah_open(d, 1, cell, "macau_5df", KICK, None, KICK, TABLE, match_uid="probe:515799156")
+    assert cell["status"] == "ok" and cell["truncation_checked"] is False and cell["truncation_reason"] == "probe_match"
+    cell2 = {**cell}
+    tm.finalize_ah_open(d, 1, cell2, "macau_5df", KICK, None, KICK, TABLE, match_uid="2026-06-06|六001")
+    assert cell2["status"] == "suspect_truncated"
+
+
+def test_asof_history_import_is_repeatable(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / "api" / "scripts"))
+    import import_asof_history_segments as imp
+    c = sqlite3.connect(":memory:")
+    c.executescript("""CREATE TABLE odds_timeline_seg (id INTEGER PRIMARY KEY, match_id INTEGER, book TEXT,
+      market TEXT, seg_start_at TEXT, seg_end_at TEXT, line REAL, price_home REAL, price_away REAL, price_draw REAL,
+      price_over REAL, price_under REAL, water_home REAL, water_away REAL, water_over REAL, water_under REAL,
+      tick_count INTEGER, compression TEXT, is_inplay INTEGER, source TEXT, water_src TEXT, extras_json TEXT,
+      UNIQUE (match_id, book, market, seg_start_at, compression));""")
+    ticks = [{"minute": None, "line": -1, "home": 2.02, "away": 1.76, "recorded_at": "2026-06-04T01:00:00+00:00"},
+             {"minute": None, "line": -1, "home": 2.02, "away": 1.76, "recorded_at": "2026-06-05T01:00:00+00:00"},
+             {"minute": None, "line": -0.75, "home": 1.9, "away": 1.9, "recorded_at": "2026-06-05T03:00:00+00:00"},
+             {"minute": 10, "line": -0.5, "home": 1.8, "away": 2.0, "recorded_at": "2026-06-06T12:10:00+00:00"}]
+    r = imp.import_ticks(c, 5, "macau", "asian", ticks, KICK, "swapped")
+    assert r == {"status": "inserted", "segments": 2}
+    rows = c.execute("SELECT line, price_home, water_home, tick_count, source FROM odds_timeline_seg"
+                     " ORDER BY seg_start_at").fetchall()
+    assert rows[0] == (1.0, 1.76, 0.76, 2, "5df_hist_asof_full")  # swapped: sign and sides exchanged
+    assert imp.import_ticks(c, 5, "macau", "asian", ticks, KICK, "swapped")["status"] == "skipped_segments_exist"
+    assert imp.import_ticks(c, 6, "macau", "asian", ticks, KICK, "unverified")["segments"] == 0

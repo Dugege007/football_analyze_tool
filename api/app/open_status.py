@@ -4,8 +4,9 @@ Every opening quote cell (China Sports Lottery Jingcai cells and Asian handicap 
 
 - status: "ok" (a real opening quote exists), "missing" (no real opening quote; the first value we
   captured ourselves must not replace it), or "suspect_truncated" (Asian handicap only: the first
-  record from the 5DollarFootballAPI history is later than the 95th percentile of the external
-  quantile table, so the history may be truncated).
+  record from the 5DollarFootballAPI history is closer to kickoff than the 5th percentile of the lead time of
+  that bookmaker in the external quantile table, so the history may be truncated). The formal table of
+  2026-10-10 is grouped by bookmaker only. Probe matches are not checked.
 - source_kind: "official_open" (the opening value comes from an interface or official opening data),
   "manual" (the opening value was recorded by hand by the user), or null when status is "missing".
   Manual and interface opening quotes are the same definition of the opening quote; source_kind only
