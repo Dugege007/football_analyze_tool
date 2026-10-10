@@ -2,6 +2,12 @@
 
 本文件记录 football-analyze-tool 公开仓库每个版本的变化。版本号遵循语义化版本（Semantic Versioning）规则。
 
+## v0.1.1（2026-10-10）
+
+- 新增 `start.bat`：在 Windows 上双击即可启动后台接口和网页界面，并自动打开浏览器。
+- 新增 `stop.bat`：在 Windows 上双击即可静默关闭后台接口和网页界面两个窗口及其服务进程。
+- README 新增「Windows 一键启动与关闭」一节。
+
 ## v0.1.0（2026-10-10）
 
 ### 新增

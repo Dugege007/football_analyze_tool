@@ -1,0 +1,3 @@
+@echo off
+rem 关闭足球分析工具：结束后台接口和网页界面两个终端窗口（连同其中的服务进程），不弹提示。
+powershell -NoProfile -WindowStyle Hidden -Command "$r=Split-Path -Parent '%~f0'; Get-CimInstance Win32_Process -Filter \"Name='cmd.exe'\" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($r) -and ($_.CommandLine -match 'uvicorn|npm run dev') } | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }; foreach($p in 8787,5173){ Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | ForEach-Object { taskkill /PID $_.OwningProcess /T /F | Out-Null } }"
