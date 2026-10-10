@@ -1022,6 +1022,7 @@ def build_x_cell(d: _Data, mpk: int, book: str, phase: str, sched: dict,
 # Markers that say a Jingcai opening row is the official first published odds (for example read from the
 # China Sports Lottery odds history, the earliest entry). Rows without such a marker are only our first capture.
 JC_OFFICIAL_FIRST_KINDS = frozenset({"official_first"})
+JC_ALT_KEYS = ("home", "draw", "away", "goal_line", "captured_at", "kind", "source_kind")
 
 
 def is_jc_official_first(row: dict) -> bool:
@@ -1110,6 +1111,10 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
         _open_flags(cell, True, earliest, sched)
         # Fewer than 100 Jingcai matches so far: no truncation check, and no other bookmaker's threshold.
         cell.update({"truncation_checked": False, "truncation_reason": "jc_no_quantile_group"})
+        hw = d.legacy_jc.get((mpk, "open")) if getattr(d, "legacy_jc", None) is not None else None
+        if hw is not None:  # the hand-recorded home win odds stay beside the 5DF opening for comparison
+            cell["alt"] = {"home": _r(hw, 4), "draw": None, "away": None, "kind": "legacy_home_only",
+                           "source_kind": "manual"}
         return _mark_no_data(cell)
     if first is not None and first[1] == "seg":
         _fill_from_seg(cell, first[2], "euro_1x2")
@@ -1126,6 +1131,18 @@ def build_jc_cell(d: _Data, mpk: int, phase: str, sched: dict, as_of: datetime,
     elif phase in ("open", "close", "mid"):
         # 3) legacy home_only → incomplete，禁止当完整盘
         hw = d.legacy_jc.get((mpk, phase))
+        if hw is not None and phase == "open":
+            # Analyst decision 2026-10-10: a hand-recorded Jingcai opening with only the home win odds is not a
+            # complete opening quote. It is missing and excluded from backtests; the home value stays in alt.
+            cell.update({"home": None, "draw": None, "away": None, "basis": "legacy_import",
+                         "source": "odds_jc_home(home_only)", "available": False, "target_at": None,
+                         "complete": False, "jc_1x2_incomplete": True, "missing_reason": "legacy_home_only",
+                         "water_source": None,
+                         "alt": {"home": _r(hw, 4), "draw": None, "away": None, "kind": "legacy_home_only",
+                                 "source_kind": "manual"}})
+            _open_flags(cell, False, None, sched)
+            cell.update({"status": osx.STATUS_MISSING, "source_kind": None, "backtest_eligible": False})
+            return _mark_no_data(cell)
         if hw is not None:
             cell.update({"home": _r(hw, 4), "draw": None, "away": None,
                          "basis": "legacy_import",
@@ -2306,6 +2323,12 @@ def _stable(item: dict) -> dict:
         if isinstance(c, dict):
             for fk, fv in osx.blank_open_status().items():
                 c.setdefault(fk, fv)
+    # Jingcai cells: alt always has the same keys (flat columns stay fixed), null when there is no alternative.
+    for blk in (it.get("jc_1x2") or {}, it.get("jc_hhad") or {}):
+        for c in blk.values():
+            if isinstance(c, dict):
+                a = c.get("alt") if isinstance(c.get("alt"), dict) else {}
+                c["alt"] = {ak: a.get(ak) for ak in JC_ALT_KEYS}
     for b in BOOKS:
         for rp in REAL_PHASES:
             if it["ah"][b].get(rp) is None:

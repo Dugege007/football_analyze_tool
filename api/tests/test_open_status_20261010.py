@@ -315,3 +315,23 @@ def test_jc1x2_queue_builder(tmp_path):
     assert [r["fixture_id"] for r in rows] == ["1", "3"]
     assert summary["by_month"] == {"2025-11": 1, "2026-10": 1} and summary["total"] == 2
     assert rows[0]["request"].endswith("bookmaker=chinasportslottery&market=1x2")
+
+
+def test_jc_legacy_home_only_is_missing_and_kept_in_alt():
+    d = _D()
+    d.legacy_jc = {(1, "open"): 1.85}
+    c = tm.build_jc_cell(d, 1, "open", SCHED, KICK, KICK, jingcai_date="2026-06-06")
+    assert c["status"] == "missing" and c["missing_reason"] == "legacy_home_only"
+    assert c["backtest_eligible"] is False and c["available"] is False and c["home"] is None
+    assert c["alt"]["home"] == 1.85 and c["alt"]["kind"] == "legacy_home_only"
+
+
+def test_jc_5df_history_wins_over_legacy_home_only():
+    seg = {"match_id": 1, "book": "jc", "market": "euro_1x2", "seg_start_at": "2026-06-04T09:00:00+08:00",
+           "seg_end_at": "2026-06-05T09:00:00+08:00", "price_home": 2.01, "price_draw": 3.4, "price_away": 2.96,
+           "tick_count": 1, "is_inplay": 0, "source": "5df_hist_jc_1x2"}
+    d = _D()
+    d.timeline = {1: _seg_rows([seg])}
+    d.legacy_jc = {(1, "open"): 1.85}
+    c = tm.build_jc_cell(d, 1, "open", SCHED, KICK, KICK, jingcai_date="2026-06-06")
+    assert c["status"] == "ok" and c["home"] == 2.01 and c["alt"]["home"] == 1.85

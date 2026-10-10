@@ -21,6 +21,8 @@
 - 竞彩胜平负初盘改取 5DollarFootballAPI 历史（`chinasportslottery`、`1x2`）开赛前的第一笔：`status = ok`、`source_kind = official_open`、`quote_kind = official_first`、`open_time` 为第一笔记录时间、`open_time_known = true`；样本少于 100 场，不做截断判定（`truncation_reason = jc_no_quantile_group`）。竞彩让球胜平负保持缺失。`jc_1x2` 格子新增 `quote_kind` 字段。
 - 新脚本 `api/scripts/import_jc_1x2_history_segments.py`：把竞彩胜平负历史原始文件导入 `odds_timeline_seg`（`book = jc`、`market = euro_1x2`、`source = 5df_hist_jc_1x2`）；场次映射用库里已有的 `5df_fixture_id` 等映射，映射不上的跳过并列出；主客颠倒时交换胜负赔率；可以重复执行，不写 `odds_asian`，不调用接口。
 - 用户 2026-10-10 决定暂不接竞彩官方接口；竞彩让球胜平负保持初盘缺失。新脚本 `scripts/backfill/build_jc1x2_history_queue.py` 只生成单独的竞彩胜平负历史补数队列（不运行、不调用接口、不写数据库）；补数节奏方案见 `docs/schema/v2_0-jc-1x2-history-backfill-pacing-plan.md`，待分析师确认后再执行。
+- 研究副本里只有主胜赔率的手工竞彩初盘（`missing_reason = legacy_home_only`）改为 `status = missing`、`backtest_eligible = false`，主胜值保留在 `alt` 里；如果该场有 5DollarFootballAPI 的竞彩胜平负历史，以历史第一笔为初盘，手工主胜值放在 `alt` 里作对照。竞彩格子的 `alt` 在扁平格式中固定为同一组键。
+- 新运行器 `scripts/backfill/run_jc1x2_history_queue.py`（start、stop、status 三种命令）：周一到周五 08:14 至 23:44 运行，复用实时让路窗口、hist_yield 忙闲判断和共享额度账本；完整一场补数在跑时每分钟最多 6 次，否则最多 8 次；每批导入前在线备份研究副本库。已测试，尚未运行。
 - 正式分位表 `config/open_truncation_quantiles.json`：来源为分析师的 `/workspace/odds-data/schema/v2_0-open-lead-time-distribution-20261010.md` 与同名 CSV，生成日期 2026-10-10；`min_samples = 100`；只按机构分组，不按联赛分组。澳门阈值为亚盘 P5 提前 28.15 小时（1689.0 分钟），平博为 57.48 小时（3448.8 分钟），两家的欧盘和大小球沿用各自亚盘的阈值。皇冠、威廉希尔和 Bet365 没有分组，不判截断（`truncation_checked = false`，`status` 保持 `ok`），不套用其他机构的阈值。按定义，每组都会有大约 5% 被标成疑似截断，这个比例不代表真实的截断率。分位表的分组可以带 `markets` 列表，只对列出的市场生效；欧盘初盘格子现在也做同样的截断判定。
 - `scripts/live/live_capture.py`：11:10 照常取数，但入库时不再写 `rule_1110` 快照，只在副本中该场、该机构、该市场还没有初盘时，用接口返回的开盘字段补一行初盘（`source = 5df_live_opening`，`api_phase = opening`，`open_time` 为空值）。库里已有的 `rule_1110` 行不删除。
 
