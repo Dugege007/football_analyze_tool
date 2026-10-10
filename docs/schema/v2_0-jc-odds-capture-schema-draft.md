@@ -15,7 +15,7 @@
 > 2. 竞彩胜平负初盘取开赛前的第一笔，做法和亚盘取时间线第一段一致：`status = ok`、`source_kind = official_open`、`quote_kind = official_first`、`open_time` 等于第一笔的记录时间、`open_time_known = true`，`source` 写明「5df_odds_history/chinasportslottery/1x2」。
 > 3. 竞彩目前只有 85 场历史样本，少于 100 场，所以竞彩初盘不做截断判定（`truncation_checked = false`，`truncation_reason = jc_no_quantile_group`）。分位表没有竞彩分组，代码也不套用其他机构的阈值。
 > 4. 竞彩让球胜平负保持缺失：5DollarFootballAPI 文档写明其他竞彩玩法不提供（other Jingcai markets are not carried），官方接口也没有历史。
-> 5. 官方接口兜底方案的结论保留：官方 `getMatchCalculatorV1` 只有当前值（含 `updateTime`，`sellInitialDate` 为空），`getFixedBonusV1` 返回 403。根据 `hf`、`df`、`af` 推断首次赔率的思路暂不实现，记为待验证。
+> 5. 官方接口调研结论（只作记录；用户 2026-10-10 决定暂不接官方接口）：官方 `getMatchCalculatorV1` 只有当前值（含 `updateTime`，`sellInitialDate` 为空），`getFixedBonusV1` 返回 403。根据 `hf`、`df`、`af` 推断首次赔率的思路暂不实现，记为待验证。
 >
 > **官方接口调研结果（2026-10-10，本机只读探测）**
 >
@@ -26,11 +26,15 @@
 >
 > 结论：赔率变化历史与官方首开赔率的接口地址只有线索，**字段名、是否包含首开那一条、发布时间精度、调用频率限制全部未验证**，本文不写任何未经验证的字段名。需要在没有被屏蔽的网络（例如用户 MSI 电脑上的本地采集器）上实际请求一次 `getFixedBonusV1`，保存原始响应后再定字段映射。
 >
-> **兜底方案**
+> **用户 2026-10-10 决定暂不接官方接口**
 >
-> 1. 首选：用户 MSI 电脑上的本地采集器请求官方单场接口，若响应中有赔率变化历史，取最早一条作为官方首开，写 `quote_kind = official_first` 和 `open_time`。
-> 2. 拿不到官方历史时：初盘格子保持 `status = missing`。我们最早一次采集到的赔率只记在 `alt` 与 `first_captured_at`（含义是 first_seen，即我们第一次看到的时刻），明确标注不是官方首开，不进入初盘，也不进入回测。
-> 3. 若以后要在开售后尽早抓第一次赔率来逼近首开，必须仍然标注 first_seen，不得改标为官方首开。
+> 1. 竞彩官方接口（`getMatchCalculatorV1`、`getFixedBonusV1`）暂不接入，也不在用户 MSI 电脑上的采集器里试接。上面的调研结果只作记录。
+> 2. 竞彩胜平负初盘只取 5DollarFootballAPI 历史开赛前的第一笔（见上一节）。
+> 3. 竞彩让球胜平负保持初盘缺失（`status = missing`）。
+> 4. 5DollarFootballAPI 的 `chinasportslottery` 只支持 `1x2`、`asian`、`goalline`、`corner` 四种玩法，没有让球胜平负。
+> 5. `asian` 对老场次和今天的场次都返回空的 ticks。
+> 6. `1x2` 有变化记录，是竞彩胜平负初盘的唯一来源。
+> 7. 竞彩胜平负历史另建单独的补数队列，补数节奏见 `docs/schema/v2_0-jc-1x2-history-backfill-pacing-plan.md`（待分析师确认）。
 
 
 > **状态**：方案草案，供后端落地。先落 **v2d3 副本**，`DUAL_WRITE` **关**，不写现网 `app.db`。  

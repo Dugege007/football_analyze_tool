@@ -287,3 +287,31 @@ def test_jc_history_import_swaps_home_and_away(tmp_path):
                      ).fetchone() == (3.5, 3.1, 2.0, "jc", "euro_1x2", "5df_hist_jc_1x2")
     assert jc.import_file(c, tmp_path / "88_chinasportslottery_1x2.json", m)["status"] == "skipped_unmapped"
     assert jc.import_file(c, p, m)["status"] == "skipped_segments_exist"
+
+
+def test_jc1x2_queue_builder(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / "scripts" / "backfill"))
+    import build_jc1x2_history_queue as q
+    qd = tmp_path / "queue"
+    qd.mkdir()
+    (qd / "pending.jsonl").write_text(
+        json.dumps({"fixture_id": "1", "match_uid": "2025-11-01|六001", "jingcai_date": "2025-11-01"}) + "\n" +
+        json.dumps({"fixture_id": "2", "match_uid": "2025-12-01|一001", "jingcai_date": "2025-12-01"}) + "\n",
+        encoding="utf-8")
+    raw = tmp_path / "data" / "x" / "raw"
+    raw.mkdir(parents=True)
+    (raw / "2_chinasportslottery_1x2.json").write_text("{}", encoding="utf-8")
+    db = tmp_path / "app.db"
+    c = sqlite3.connect(db)
+    c.executescript("CREATE TABLE matches (id INTEGER, match_uid TEXT, jingcai_date TEXT);"
+                    "CREATE TABLE match_meta (match_id INTEGER, extras_json TEXT);")
+    c.execute("INSERT INTO matches VALUES (1, '2026-10-01|四001', '2026-10-01')")
+    c.execute("INSERT INTO match_meta VALUES (1, ?)", (json.dumps({"ids": {"5df_fixture_id": "3"}}),))
+    c.commit()
+    c.close()
+    rows, summary = q.build(qd, [db], tmp_path / "data")
+    assert [r["fixture_id"] for r in rows] == ["1", "3"]
+    assert summary["by_month"] == {"2025-11": 1, "2026-10": 1} and summary["total"] == 2
+    assert rows[0]["request"].endswith("bookmaker=chinasportslottery&market=1x2")
