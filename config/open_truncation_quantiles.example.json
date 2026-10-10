@@ -1,0 +1,8 @@
+{
+  "_comment": "Format example only; the values are placeholders and must be supplied by the football analyst. Copy to config/open_truncation_quantiles.json to enable the Asian handicap truncation check. late_p95_lead_minutes: in the group, 95 percent of normal matches have their first 5DollarFootballAPI history record at least this many minutes before kickoff; a first record later than that is marked open.status = suspect_truncated and backtest_eligible = false. league = null is the book-only fallback group, used when the book plus league group has fewer samples than min_samples. When the file does not exist, no truncation check is made. See api/app/open_status.py.",
+  "min_samples": null,
+  "groups": [
+    {"book": "macau", "league": "<league name as in matches.competition_name>", "samples": null, "late_p95_lead_minutes": null},
+    {"book": "macau", "league": null, "samples": null, "late_p95_lead_minutes": null}
+  ]
+}

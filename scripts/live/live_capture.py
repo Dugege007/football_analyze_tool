@@ -10,6 +10,10 @@ v2_0-0316-followup-decisions.md（kickoff 12:00 占位、竞彩日归属只认�
 jingcai_date_from_code），与 /dispatch/pending 同一套函数；/dispatch/pending 读现网库，新竞彩日的场不在库里，
 所以场次清单从 5DF `/v1/chinasportslottery?types=jingcailottery` 取（自带 5DF fixture id），能对上库里场次时再交叉核对。
 
+2026-10-10 用户规则：竞彩日 11:10 照常取数，但这次取数不再另存成一种盘口（rule_1110／即时）；
+入库时只读取接口返回的开盘（opening）字段，仅当副本里该场、该机构、该市场还没有初盘时补上初盘
+（例如新开盘的场次），见 open_fill_vals。11:10 的即时值不写库，原始 JSON 照常保存。库里已有的 rule_1110 行不删除。
+
 子命令：
   plan [--date D]            刷新竞彩日 D 的场次与目标（1–2 次 CSL 调用）
   status [--date D]          列出目标（不调 API）
@@ -725,6 +729,7 @@ def normalize(raw: dict, tgt: dict, match: dict, fetched: datetime, raw_rel: str
                  "kickoff_source": "5df", "exception": match.get("exception"),
                  "phase": tgt["phase"], "phase_variant": tgt["phase_variant"],
                  "channel": tgt["channel"], "point": tgt["point"],
+                 # 11:10 fetch: kept as a label for the raw file only; ingest no longer writes it as a stage
                  "label": "rule_1110" if tgt["phase"] == "live" else None,
                  "target_at": tgt["target_at"], "fetched_at": iso(fetched), "fetch_lag_min": lag,
                  "minutes_before_kickoff": round((kick - fetched).total_seconds() / 60.0, 1),
@@ -954,6 +959,44 @@ def orientation(conn, m: sqlite3.Row, home5: str, away5: str) -> str:
     return "unverified"
 
 
+LIVE_1110_OPEN_SOURCE = "5df_live_opening"
+
+
+def open_fill_vals(r: dict) -> dict | None:
+    """User rule 2026-10-10: the 11:10 fetch is no longer stored as a stage of its own (rule_1110 or instant).
+    It only fills each book's opening quote, taken from the interface "opening" field of that fetch, and only
+    when the replica has no opening row yet for that match, book and market (for example a newly opened match).
+    The current ("closing") value of the 11:10 fetch is never written. Returns None when the fetch carries no
+    opening field. r must already be oriented (flip applied) and carry _match_id."""
+    if r.get("market") == "asian":
+        if r.get("open_line_api") is None or r.get("open_home") is None or r.get("open_away") is None:
+            return None
+    elif r.get("market") == "ou":
+        if r.get("open_line_api") is None or r.get("open_over") is None or r.get("open_under") is None:
+            return None
+    elif r.get("open_home") is None or r.get("open_draw") is None or r.get("open_away") is None:
+        return None
+    asian, ou = r["market"] == "asian", r["market"] == "ou"
+    ex = {"api_phase": "opening", "odds_source": "live", "capture": "interface_opening_field",
+          "fetched_at": r["fetched_at"], "first_captured_at": r["fetched_at"], "open_time": None,
+          "open_time_known": False, "source_kind": "official_open", "fixture_id": r.get("fixture_id"),
+          "book_slug": r.get("book_slug"), "orientation": r.get("orientation"), "raw_path": r.get("raw_path"),
+          "raw_sha256": r.get("raw_sha256"), "match_uid": r.get("match_uid"),
+          "note": "opening field read during the 11:10 fetch; the opening time itself is unknown"}
+    return {"match_id": r["_match_id"], "book": r["book"], "market": r["market"], "channel": "rule",
+            "point": "open", "recorded_at": None, "target_at": None, "lag_hours": None, "stale_gap": 0,
+            "line": r["open_line_api"] if (asian or ou) else None,
+            "price_home": r.get("open_home") if not ou else None, "price_away": r.get("open_away") if not ou else None,
+            "price_draw": r.get("open_draw") if not (asian or ou) else None,
+            "price_over": r.get("open_over") if ou else None, "price_under": r.get("open_under") if ou else None,
+            "water_home": hk(r.get("open_home")) if asian else None,
+            "water_away": hk(r.get("open_away")) if asian else None,
+            "water_over": hk(r.get("open_over")) if ou else None,
+            "water_under": hk(r.get("open_under")) if ou else None,
+            "water_src": "actual" if (asian or ou) else None, "water_censored": None,
+            "source": LIVE_1110_OPEN_SOURCE, "extras_json": json.dumps(ex, ensure_ascii=False, sort_keys=True)}
+
+
 def flip(r: dict) -> dict:
     r = dict(r)
     if r["market"] == "asian" and r["line_api"] is not None:
@@ -1068,6 +1111,24 @@ def ingest(D: str, db: Path = REPLICA_DB, dry_run=False, create_missing_matches:
                 undo.append({"op": "delete", "old": dict(old)})
                 conn.execute("DELETE FROM odds_snapshot WHERE id=?", (old["id"],))
         for r in to_write:
+            if r["phase"] == "live":  # 11:10 fetch: only fills a missing opening quote (user rule 2026-10-10)
+                ov = open_fill_vals(r)
+                if ov is None:
+                    setst(r, "live_1110_no_opening_field")
+                    continue
+                if conn.execute("SELECT 1 FROM odds_snapshot WHERE match_id=? AND book=? AND market=? AND point='open'",
+                                (ov["match_id"], ov["book"], ov["market"])).fetchone():
+                    setst(r, "live_1110_opening_already_present")
+                    continue
+                undo.append({"op": "upsert", "old": None, "key": [ov[k] for k in
+                             ("match_id", "book", "market", "channel", "point")]})
+                cols = list(ov)
+                conn.execute(f"INSERT INTO odds_snapshot ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                             [ov[c] for c in cols])
+                rep["written"] += 1
+                rep["opening_filled"] = rep.get("opening_filled", 0) + 1
+                setst(r, "live_1110_opening_filled")
+                continue
             target, fetched = parse(r["target_at"]), parse(r["fetched_at"])
             pm = plan_m.get(r["match_uid"])
             ps = phase_status(D, r, pm)

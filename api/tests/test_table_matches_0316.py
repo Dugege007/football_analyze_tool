@@ -435,13 +435,15 @@ def test_open_first_tick_beats_api_opening_and_respects_as_of(db, client):
     assert o2["open_basis"] == "api_opening" and o2["earliest_ts_quote_at"] is None
 
 
-def test_open_legacy_import_inferred_1110_and_flat_columns(db, client):
+def test_open_legacy_import_time_unknown_and_flat_columns(db, client):
     """0.3.17：legacy_import 的 earliest 推定为竞彩日 11:10（ts_inferred），usable 与 api_opening 同规则（不一刀切 true）。"""
     d = _get(client, date_from="2026-06-06", date_to="2026-06-06")
-    o = _row(d, U6)["ah"]["macau"]["open"]  # 现网旧手工；开赛 16:00 → mid 08:00 < 11:10，close 15:00 ≥ 11:10
+    o = _row(d, U6)["ah"]["macau"]["open"]  # hand-recorded opening quote; opening time unknown (no 11:10 assumption)
     assert o["open_basis"] == "legacy_import"
-    assert o["earliest_ts_quote_at"] == "2026-06-06T11:10:00+08:00" and o["ts_inferred"] is True
-    assert o["usable_at_mid"] is False and o["usable_at_close"] is True
+    assert o["earliest_ts_quote_at"] is None and o["ts_inferred"] is False
+    assert o["usable_at_mid"] is False and o["usable_at_close"] is False
+    assert o["status"] == "ok" and o["source_kind"] == "manual" and o["open_time"] is None
+    assert o["open_time_known"] is False
     assert o["unusable_reason"] == "open_time_unknown_after_decision_possible"
     flat = _get(client, date_from="2026-06-06", date_to="2026-06-06", format="flat")["items"][0]
     for k in ("ah_macau_open_open_basis", "ah_macau_open_usable_at_mid", "x1x2_william_open_usable_at_close",
@@ -472,11 +474,13 @@ def _sched(jd, mid, close):
     ("2026-06-06T04:10:00+08:00", "2026-06-06T11:10:00+08:00", False, True),
 ])
 def test_open_flags_legacy_import_rule(mid, close, exp_mid, exp_close):
+    # Since 2026-10-10 the hand-recorded opening time is unknown: without a real timestamped quote both are false.
     from app import table_matches as tm
     out = tm._open_flags(_legacy_cell(), False, None, _sched("2026-06-06", mid, close))
-    assert out["earliest_ts_quote_at"] == "2026-06-06T11:10:00+08:00" and out["ts_inferred"] is True
-    assert (out["usable_at_mid"], out["usable_at_close"]) == (exp_mid, exp_close)
-    assert (out["unusable_reason"] is None) == (exp_mid and exp_close)
+    assert out["earliest_ts_quote_at"] is None and out["ts_inferred"] is False
+    assert (out["usable_at_mid"], out["usable_at_close"]) == (False, False)
+    assert out["unusable_reason"] == "open_time_unknown_after_decision_possible"
+    assert out["source_kind"] == "manual" and out["status"] == "ok" and out["open_time"] is None
 
 
 def test_open_flags_legacy_import_real_earlier_quote_wins():

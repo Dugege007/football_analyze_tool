@@ -8,8 +8,10 @@
 - 规则（同 S1，prediction-landing-cards.md）：
   B1 |澳门 open 盘 − 皇冠 open 盘| ≤ S1.line_dev_max；B2 open = mid = close 盘；
   B3 上盘水位 open/mid/close 都在 [S1.upper_water_lo, S1.upper_water_hi]（阈值见 config/strategy_params.json）；B4 上盘可定（平手约定主队）→ 买下盘，按 macau_close 结算。
-- 初盘口径：澳门 open = first_tick（usable 恒 true）；皇冠 open = legacy_import，earliest 推定竞彩日 11:10，
-  usable_at_close = 11:10 ≤ close target_at（与 /table/matches 同规则），否则跳过并计数。
+- 初盘口径：澳门 open = first_tick（usable 恒 true）；皇冠 open = legacy_import（用户手工记录的开盘数据）。
+  2026-10-10 起（用户规则）不再假设手工初盘最早时间为竞彩日 11:10：手工初盘的开盘时间未知，
+  因此无法证明它在 close target_at 之前已可得，usable_at_close 记为 false，跳过并计入 crown_open_unusable
+  （与 /table/matches 同规则）。今后若手工初盘带有真实记录时间，再按真实时间判断。
 - as-of：mid/close 快照 recorded_at ≤ target_at < 开赛；open recorded_at ≤ close target_at；否则跳过。
 用法：.venv/bin/python scripts/generate_shadow_s1_v2.py --db data/v2d3/app.db [--dry-run]
 """
@@ -88,8 +90,9 @@ def generate(conn) -> tuple[list[dict], dict]:
                 r_mid <= t_mid and r_close <= t_close and t_close < kick and r_open <= t_close):
             stats["asof_violation"] += 1
             continue
-        earliest_crown = datetime.fromisoformat(m["jingcai_date"]).replace(hour=11, minute=10, tzinfo=TZ)
-        if not earliest_crown <= t_close:
+        # The opening time of the hand-recorded Crown opening quote is unknown (no 11:10 assumption since 2026-10-10).
+        earliest_crown = None
+        if earliest_crown is None or not earliest_crown <= t_close:
             stats["crown_open_unusable"] += 1
             continue
         stats["feature_ready"] += 1

@@ -1,5 +1,21 @@
 # CHANGELOG · match-analysis-api
 
+## 未发布（分支 backend/jc-open-first-quote-2026-10-10，等待分析师验收；接口版本号在合并时再定）
+
+依据：用户 2026-10-10 规则（分析师下达）。
+
+- 竞彩初盘（`jc_1x2.open`、`jc_hhad.open`）只认官方第一次开出的赔率：数据行带 `quote_kind = "official_first"` 标记才显示为初盘；否则 `status = missing`，我们抓到的值只放在 `alt`（`alt.kind = first_seen_capture`），抓取时刻写在 `first_captured_at`。删除对初盘 11:10 行的 11:00 至 11:20 窗口检查。
+- 所有初盘格子（亚盘、欧赔、竞彩）新增字段，供前端接入：
+  - `status`：`ok`（有真实初盘）、`missing`（初盘缺失，禁止用首次采集的数据顶替）、`suspect_truncated`（疑似截断，仅亚盘）。
+  - `source_kind`：`official_open`（接口或官方开盘数据）、`manual`（用户手工记录）、空值。手工初盘与接口初盘是同一个定义，只用本字段区分来源。
+  - `first_captured_at`：我们首次采集该机构该市场的时刻。
+  - `open_time`：开盘时间，未知时为空值；`open_time_known`：`open_time` 不为空时为 true。
+  - `backtest_eligible`：`status` 不是 `ok` 时为 false，回测应排除。
+  - `truncation_checked`、`truncation_reason`、`truncation_group`、`first_record_lead_minutes`、`late_p95_lead_minutes`：亚盘截断判定的结果。
+- 亚盘截断判定：读取分析师提供的分位表 `config/open_truncation_quantiles.json`（可用环境变量 `OPEN_TRUNCATION_QUANTILES_PATH` 改路径；格式见 `config/open_truncation_quantiles.example.json` 与 `app/open_status.py`）。按「机构加联赛」分组，样本数少于 `min_samples` 时退回「仅按机构」；5DollarFootballAPI 历史第一条记录晚于该组 95% 分位即标 `suspect_truncated`。分位表文件不存在时不做截断判定。后端不计算分位表。
+- 手工初盘不再假设最早时间为竞彩日 11:10：没有真实带时间戳报价时 `earliest_ts_quote_at` 为空值、`ts_inferred` 为 false、`usable_at_mid` 与 `usable_at_close` 为 false。旧 39 场冻结预测（策略 CFFXDJ_5_V3）的预测哈希、结算结果与验证摘要在改动前后完全一致。
+- `scripts/live/live_capture.py`：11:10 照常取数，但入库时不再写 `rule_1110` 快照，只在副本中该场、该机构、该市场还没有初盘时，用接口返回的开盘字段补一行初盘（`source = 5df_live_opening`，`api_phase = opening`，`open_time` 为空值）。库里已有的 `rule_1110` 行不删除。
+
 ## 0.3.26 — 2026-10-10
 
 - GET /matches 每场增加 picks 字段：正式方案冻结预测的各玩法方向（亚盘取自 predictions 表，其他玩法取自 prediction_legs 表），亚盘盘口取澳门临盘（主队让球为正数）。冻结预测没有记录份数时按预测页口径推算份数，并以 stake_estimated=true 标注。只读，不改库。
