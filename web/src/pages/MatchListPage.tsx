@@ -148,7 +148,7 @@ export default function MatchListPage() {
           <Title level={3} style={{ marginBottom: 4 }}>
             当日赛程
           </Title>
-          <Text type="secondary">按竞彩日、开赛小时、竞彩编号排序。默认显示北京时间今天所属的竞彩日（北京时间 00:00 到 11:30 开赛的场次属于前一个竞彩日），默认只看竞彩场。</Text>
+          <Text type="secondary">同一竞彩日内按竞彩编号升序排列；没有编号的比赛排在最后，再按开赛时间排列。默认显示北京时间今天所属的竞彩日（北京时间 00:00 到 11:30 开赛的场次属于前一个竞彩日），默认只看竞彩场。</Text>
         </div>
         <Tag color={source === 'api' ? 'success' : 'warning'}>
           {labelDataSource(source)}

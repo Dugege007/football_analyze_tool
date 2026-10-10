@@ -28,7 +28,7 @@ TZ_CN = timezone(timedelta(hours=8))
 # 主列表: abs(now - collect_at) <= PENDING_ABS_MIN；补发: include_overdue → collect_at <= now <= kickoff
 PENDING_ABS_MIN = 30
 
-API_VERSION = "0.3.24"
+API_VERSION = "0.3.25"
 
 # D2：现网双写开关（拍板默认关；副本演练用 scripts/sync_odds_asian_from_snapshot.py）
 DUAL_WRITE_ODDS_ASIAN = os.environ.get("DUAL_WRITE_ODDS_ASIAN", "0").strip().lower() in (
@@ -551,9 +551,10 @@ def list_matches(
                        WHERE json_extract(config_json, '$.extras.test_only') = 1)) AS pred_count
                 FROM matches m
                 WHERE m.jingcai_date = ?
-                ORDER BY m.jingcai_date,
-                         COALESCE(m.kickoff_hour, 99),
-                         COALESCE(m.jc_no, 999999)
+                ORDER BY CASE WHEN m.jc_no IS NULL THEN 1 ELSE 0 END,
+                         m.jc_no ASC,
+                         COALESCE(m.kickoff_at, ''),
+                         COALESCE(m.kickoff_hour, 99)
                 """,
                 (DEFAULT_STRATEGY, date),
             ).fetchall()
@@ -569,9 +570,10 @@ def list_matches(
                        WHERE json_extract(config_json, '$.extras.test_only') = 1)) AS pred_count
                 FROM matches m
                 WHERE m.jingcai_date = ? AND m.scope = ?
-                ORDER BY m.jingcai_date,
-                         COALESCE(m.kickoff_hour, 99),
-                         COALESCE(m.jc_no, 999999)
+                ORDER BY CASE WHEN m.jc_no IS NULL THEN 1 ELSE 0 END,
+                         m.jc_no ASC,
+                         COALESCE(m.kickoff_at, ''),
+                         COALESCE(m.kickoff_hour, 99)
                 """,
                 (DEFAULT_STRATEGY, date, scope),
             ).fetchall()
