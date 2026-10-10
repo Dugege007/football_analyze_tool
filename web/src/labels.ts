@@ -124,16 +124,16 @@ export function formatPnlAmount(v: unknown): string {
 }
 
 
-/** 冲突对阵：主队 对 客队；缺名时回退 */
+/** 冲突对阵：主队 vs 客队；缺名时回退（消息文本除外，消息用「-」连接） */
 export function formatConflictMatchup(
   home: string | null | undefined,
   away: string | null | undefined,
 ): string {
   const h = (home ?? '').trim()
   const a = (away ?? '').trim()
-  if (h && a) return `${h} 对 ${a}`
-  if (h) return `${h} 对 —`
-  if (a) return `— 对 ${a}`
+  if (h && a) return `${h} vs ${a}`
+  if (h) return `${h} vs —`
+  if (a) return `— vs ${a}`
   return '对阵未知'
 }
 

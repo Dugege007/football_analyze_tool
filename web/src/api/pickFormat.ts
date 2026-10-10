@@ -11,6 +11,11 @@
  * 竞彩让球显示按竞彩官方的规则：+ 表示主队受让，- 表示主队让球（主队让一球写作 -1），
  * 库里的竞彩让球线（odds_jc_hhad.goal_line、prediction_legs.line）本身就是竞彩官方写法，原样显示。
  *
+ * 欧盘（1x2）与竞彩胜平负（jc_had）的方向写法相同，因此加前缀区分：欧盘「(欧) 胜 x3」，
+ * 竞彩「(竞) 平负 x1」（半角括号，括号后一个空格）。亚盘、大小、竞彩让球不加前缀。
+ * 表格列和当日消息都调用本文件的 formatPick；表格里方向与「x份数」之间是一个空格，
+ * 消息里再改成两个空格并以全角「；」结尾（见 dailyMessageTemplate.ts）。
+ *
  * 本文件不引用其他模块，便于脚本 scripts/test-pick-format.mjs 单独编译测试。
  */
 
@@ -81,10 +86,14 @@ export function formatPick(p: Pick | null | undefined): string {
       if (!ou) return NO_BET
       return `${line != null ? num(line) : ''}${ou}${x}`
     }
-    case '1x2':
+    case '1x2': {
+      const v = wdl(side)
+      // 欧盘与竞彩胜平负写法相同，加前缀区分：半角括号，括号后一个空格
+      return v ? `(欧) ${v}${x}` : NO_BET
+    }
     case 'jc_had': {
       const v = wdl(side)
-      return v ? `${v}${x}` : NO_BET
+      return v ? `(竞) ${v}${x}` : NO_BET
     }
     case 'jc_hhad': {
       const v = wdl(side)

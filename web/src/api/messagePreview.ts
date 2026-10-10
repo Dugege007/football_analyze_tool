@@ -50,6 +50,7 @@ export function simplifiedStakeFromRationale(rationale: string[] | undefined): n
   return null
 }
 
+/** 消息标题行：完整竞彩编号（保留星期前缀）+ 时:分 + 赛事 + 主队-客队： */
 export function formatMatchHeaderLine(opts: {
   jcNo?: string | null
   kickoff?: string | null
@@ -57,7 +58,7 @@ export function formatMatchHeaderLine(opts: {
   home: string
   away: string
 }): string {
-  const no = opts.jcNo?.replace(/^[一二三四五六日天]/u, '') || opts.jcNo || '—'
+  const no = (opts.jcNo ?? '').trim() || '—'
   const time = opts.kickoff
     ? opts.kickoff.slice(11, 16)
     : '—'

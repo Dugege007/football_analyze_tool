@@ -440,7 +440,7 @@ export function normalizeTableRow(api: ApiTableRow, asOf: string | null = null):
     ledgerNote: api.prediction?.ledger_note ?? null,
     home: m.home,
     away: m.away,
-    matchup: `${m.home} 对 ${m.away}`,
+    matchup: `${m.home} vs ${m.away}`,
     ah,
     ahMacau5df,
     phaseException: !!api.phase_exception,

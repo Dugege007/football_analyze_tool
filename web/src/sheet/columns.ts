@@ -989,8 +989,8 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
         tooltip: (p: TooltipCallbackParams<SheetRow>) => {
           const r = p.data
           if (!r) return null
-          if (!r.manualReview) return `${r.home} 对 ${r.away}`
-          return `${r.home} 对 ${r.away}；人工复核中，赛果与结算暂不显示${r.manualReviewReason ? `（后端原因：${r.manualReviewReason}）` : ''}`
+          if (!r.manualReview) return `${r.home} vs ${r.away}`
+          return `${r.home} vs ${r.away}；人工复核中，赛果与结算暂不显示${r.manualReviewReason ? `（后端原因：${r.manualReviewReason}）` : ''}`
         },
       },
       {
@@ -1005,7 +1005,7 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
         tooltip: (p: TooltipCallbackParams<SheetRow>) => {
           const r = p.data
           if (!r) return null
-          return `${r.home} 对 ${r.away}`
+          return `${r.home} vs ${r.away}`
         },
       },
     ],

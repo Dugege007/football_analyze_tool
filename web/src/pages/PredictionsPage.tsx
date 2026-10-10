@@ -141,7 +141,7 @@ export default function PredictionsPage() {
       title: '对阵',
       render: (_, r) => (
         <Link to={`/matches/${encodeURIComponent(r.id)}`}>
-          {r.match.teams.home} 对 {r.match.teams.away}
+          {r.match.teams.home} vs {r.match.teams.away}
         </Link>
       ),
     },

@@ -211,7 +211,7 @@ export default function MatchDetailPage() {
           <Tag>{match.scope === 'jingcai' ? '竞彩' : '扩展'}</Tag>
         </Space>
         <Title level={3} style={{ marginTop: 8, marginBottom: 4 }}>
-          {match.teams.home} 对 {match.teams.away}
+          {match.teams.home} vs {match.teams.away}
         </Title>
         <Text type="secondary">
           竞彩日 {match.date}
