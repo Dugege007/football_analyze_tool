@@ -11,7 +11,9 @@
   1. `GET /v1/fixtures/{id}/odds?bookmakers=macauslot,pinnacle`
   2. `GET /v1/fixtures/{id}/odds/history?bookmaker=macauslot&market=asian`
   3. `GET /v1/fixtures/{id}/odds/history?bookmaker=pinnacle&market=asian`
-- 自限 **≤30/分**；`X-RateLimit-Remaining≤5` **停**
+- 场次限速：默认每分钟最多补 1 场（与完整数据档对齐，可用 `--max-per-min` 调整）。
+- 让路规则：补历史赔率时，如果今天的实时采集需要调用额度，历史队列先暂停（由 `hist_yield.py` 判断，规则全文见 `docs/schema/v2_0-hist-backfill-yield-to-live.md`）。
+- 调用额度：经过 `api/app/shared_api_yield.py` 统一控制，所有补数脚本合计每分钟不超过 16 次；响应头中的剩余次数（`X-RateLimit-Remaining`）不超过 24 时停到重置时刻；本脚本另有剩余次数不超过 5 时停止的兜底。
 - mid 推导必须用 `recorded_at ≤` 目标时刻的 tick（铁律）；本脚手架只落 raw，不发明水位数字
 
 ## 硬约束
@@ -29,7 +31,8 @@
 5df-multibook-history-queue/
   DUAL_WRITE.off          # 双写关闭标记
   build_queue.py          # 建／刷新 pending + unmapped
-  run_queue.py            # 限速 worker
+  run_queue.py            # 限速执行器，并在实时采集需要额度时暂停
+  hist_yield.py           # 只读探测：判断今天的实时采集是否繁忙、补历史数据是否应该暂停
   health_check.py         # 巡检
   queue/
     pending.jsonl         # 待拉（有 fixture_id）
@@ -49,7 +52,7 @@ python3 map_csl_fixtures.py --days 14 --max-new 200
 # 产出：raw/csl/*.json、csl_fixture_map.json，并自动 rebuild 队列
 ```
 
-限速：≤30/分；`Remaining≤5` 停。**2026-10-07 04:07 BJ：PAUSED-FOR-RATE，勿再打 5DF 直至解除。**
+限速与让路规则见上文。
 
 ## 怎么跑
 
@@ -63,19 +66,24 @@ python3 build_queue.py
 python3 health_check.py
 
 # 3) 冒烟（不打 API）
-python3 run_queue.py --dry-run --limit 3
+# 让路探测（只有空闲时才应该补历史数据）
+python3 hist_yield.py
+python3 run_queue.py --yield-check-only
 
-# 4) 小批实拉（P1 起步）
-python3 run_queue.py --limit 50
+python3 run_queue.py --dry-run --limit 2 --max-per-min 1
 
-# 5) 全量（约 8h 量级；需显式确认）
-CONFIRM_FULL_RUN=1 python3 run_queue.py
+# 4) 低速实拉（默认开启让路检查，不要一次开很大批量）
+python3 run_queue.py --limit 6 --max-per-min 1 --yield-check
+
+# 5) 全量（需要显式确认；仍然建议带让路检查与限速，不要在实时采集高峰时段运行）
+CONFIRM_FULL_RUN=1 python3 run_queue.py --max-per-min 1 --yield-check --yield-wait
 ```
 
 ## 停止条件（run_queue）
 
 - pending 空
-- `X-RateLimit-Remaining ≤ 5`
+- 因实时采集繁忙而暂停（`stop=paused_yield`，`state.paused_reason` 记录原因）
+- 共享额度控制中剩余次数不超过 24，或本地剩余次数不超过 5
 - HTTP 429 / 401 / 403
 - 连续错误过多（默认 ≥5）
 - `--limit` 达到

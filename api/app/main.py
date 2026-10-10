@@ -19,6 +19,7 @@ from app import backtest as bt
 from app import shadow_evaluable as shadow_ev  # N5/N5-PIN 不可评估记账
 from app import collection_schedule
 from app import leak_suspect as _leak  # 0.3.20
+from app import odds_timeline_chart as otc  # 0.3.23
 
 DEFAULT_STRATEGY = "CFFXDJ_5_V3"
 TZ_CN = timezone(timedelta(hours=8))
@@ -27,7 +28,7 @@ TZ_CN = timezone(timedelta(hours=8))
 # 主列表: abs(now - collect_at) <= PENDING_ABS_MIN；补发: include_overdue → collect_at <= now <= kickoff
 PENDING_ABS_MIN = 30
 
-API_VERSION = "0.3.22"
+API_VERSION = "0.3.23"
 
 # D2：现网双写开关（拍板默认关；副本演练用 scripts/sync_odds_asian_from_snapshot.py）
 DUAL_WRITE_ODDS_ASIAN = os.environ.get("DUAL_WRITE_ODDS_ASIAN", "0").strip().lower() in (
@@ -601,6 +602,45 @@ def get_match_odds(
         return build_odds(conn, row["id"], raw_only=raw)
     finally:
         conn.close()
+
+
+@app.get("/matches/{match_id}/odds/timeline")
+def get_match_odds_timeline(
+    match_id: str,
+    book: str | None = Query(None, description="默认 macauslot；亦接受 macau→macauslot、william→williamhill"),
+    market: str | None = Query(None, description="默认 asian；允许 asian／1x2／goalline"),
+    fixture_id: str | None = Query(None, description="可选：直接指定 5DollarFootballAPI 对阵编号"),
+    as_of: str | None = Query(None, description="ISO-8601；只返回 recorded_at≤as_of 的赛前 tick"),
+    cache_ttl_sec: int | None = Query(None, ge=60, le=900, description="调试用缓存生存秒数；服务端有上限"),
+    force_refresh: bool = Query(False, description="true 时绕过短时缓存；忙则仍 503"),
+) -> dict:
+    """0.3.23：赛前盘口／水位折线（点开才拉；不写主表）。契约 v2_0-prematch-odds-timeline-chart.md"""
+    from fastapi.responses import JSONResponse
+    conn = get_conn()
+    try:
+        row = None
+        extras = {}
+        if match_id != "by-fixture":
+            row = resolve_match_row(conn, match_id)
+            extras = meta_extras(conn, row["id"])
+        try:
+            return otc.get_timeline(
+                conn,
+                match_id_path=match_id,
+                row=row,
+                extras=extras,
+                book=book,
+                market=market,
+                fixture_id=fixture_id,
+                as_of=as_of,
+                cache_ttl_sec=cache_ttl_sec,
+                force_refresh=force_refresh,
+            )
+        except otc.TimelineError as e:
+            return JSONResponse(status_code=e.status, content=e.body())
+    finally:
+        conn.close()
+
 
 
 @app.get("/matches/{match_id}/prediction")

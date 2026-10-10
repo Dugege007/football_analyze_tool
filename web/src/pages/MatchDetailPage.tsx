@@ -28,6 +28,7 @@ import {
 import { LEAK_SUSPECT_TAG, labelDataSource, labelSettleBook, readLedgerNote, readLeakSuspect } from '../labels'
 import { DEFAULT_STRATEGY, STRATEGY_WHITELIST } from '../api/strategies'
 import OddsWaterTimelineChart from '../components/OddsWaterTimelineChart'
+import { isCollectorEmpty } from '../sheet/types'
 import { apiBase, useDbSource } from '../api/dataSource'
 import type {
   AsianLineFull,
@@ -244,16 +245,16 @@ export default function MatchDetailPage() {
             {odds?.jc_hhad?.open && (
               <Alert
                 style={{ marginTop: 12 }}
-                type={odds.jc_hhad.open.missing_reason === 'msi_empty' ? 'warning' : 'info'}
+                type={isCollectorEmpty(odds.jc_hhad.open.missing_reason) ? 'warning' : 'info'}
                 showIcon
                 title={
-                  odds.jc_hhad.open.missing_reason === 'msi_empty'
+                  isCollectorEmpty(odds.jc_hhad.open.missing_reason)
                     ? '暂无竞彩官方数据（让球）'
                     : `竞彩让球（详情为当前主表行） ${odds.jc_hhad.open.goal_line ?? '—'}`
                 }
                 description={
-                  odds.jc_hhad.open.missing_reason === 'msi_empty'
-                    ? 'MSI 未通或未采；决策时刻选线请以数据表 /table/matches 的 goal_line/decision_line 为准'
+                  isCollectorEmpty(odds.jc_hhad.open.missing_reason)
+                    ? '本地采集器未接通或尚未采集；决策时刻选线请以数据表 /table/matches 的 goal_line/decision_line 为准'
                     : `胜 ${odds.jc_hhad.open.home ?? '—'} / 平 ${odds.jc_hhad.open.draw ?? '—'} / 负 ${odds.jc_hhad.open.away ?? '—'}${
                         odds.jc_hhad.open.post_decision_line_change
                           ? '；决策后让球线已变（当前线仅对照）'

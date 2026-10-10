@@ -62,7 +62,7 @@ def _live(as_of=None, mode="rule_1110"):
 # ---------------- version / kelly 未改 ----------------
 
 def test_versions():
-    assert API_VERSION == "0.3.22" and tm.CONFIG_VERSION == "hl_v0.3.1"
+    assert API_VERSION == "0.3.23" and tm.CONFIG_VERSION == "hl_v0.3.1"
     assert tm.KELLY_HL_MARGIN == 0.02 and tm.KELLY_HL["heavy"]["threshold"] is None  # 重档仍留给 hl_v0.4
 
 
@@ -189,7 +189,16 @@ def test_kickoff_drift_not_postpone(db):
 
 # ---------------- leak_suspect（配置叠加，不写库） ----------------
 
-def test_leak_suspect_config_overlay():
+@pytest.fixture
+def leak_example_config(monkeypatch):
+    """这两条用例按公开仓的合成示例配置断言；本机存在真实 config/leak_suspect.json 时也固定使用示例文件。"""
+    monkeypatch.setattr(leak, "CONFIG_PATH", leak.EXAMPLE_PATH)
+    leak._cache.update({"mtime": None, "path": None, "data": None})
+    yield
+    leak._cache.update({"mtime": None, "path": None, "data": None})
+
+
+def test_leak_suspect_config_overlay(leak_example_config):
     assert leak.leak_suspect_for("LEGACY_V4") == "cutoff_plus24"
     assert leak.leak_suspect_for("LEGACY_V5_alias") == "cutoff_plus24"
     assert leak.leak_suspect_for("LEGACY_V4-F") is None  # 修好后重跑码不标
@@ -200,7 +209,7 @@ def test_leak_suspect_config_overlay():
     assert all(e["in_db"] is False for e in reg["items"])
 
 
-def test_strategies_leak_suspect_endpoint(db):
+def test_strategies_leak_suspect_endpoint(db, leak_example_config):
     d = TestClient(app).get("/strategies/leak_suspect").json()
     assert d["meta"]["db"] in ("live", "v2d3") or True
     keys = {e["strategy_key"]: e for e in d["items"]}

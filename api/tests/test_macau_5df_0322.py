@@ -36,7 +36,7 @@ def live(monkeypatch):
 
 
 def test_api_version():
-    assert API_VERSION == "0.3.22"
+    assert API_VERSION == "0.3.23"
 
 
 def test_is_5df_classifier():
@@ -60,7 +60,7 @@ def test_v2d3_macau_5df_mid_available(v2d3):
     })
     assert r.status_code == 200
     d = r.json()
-    assert d["api_version"] == "0.3.22"
+    assert d["api_version"] == "0.3.23"
     assert "macau_5df" in d["config"]
     assert d["config"]["macau_5df"]["book_lane"]["ah.macau"] == "macau_manual"
     it = next(x for x in d["items"] if x["match_id"] == JUNE_UID)
@@ -122,7 +122,7 @@ def test_live_macau_mid_no_data_and_5df_unavailable(live):
     })
     assert r.status_code == 200
     d = r.json()
-    assert d["api_version"] == "0.3.22"
+    assert d["api_version"] == "0.3.23"
     it = next(x for x in d["items"] if x["match_id"] == JUNE_UID)
     prim = it["ah"]["macau"]
     assert prim["mid"]["available"] is False

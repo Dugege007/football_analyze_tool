@@ -94,8 +94,14 @@ def main() -> int:
         "dual_write_marker_present": dual_ok,
         "dual_write_env": env_dual or None,
         "ratelimit_note": (
-            "Self-cap ≤30/min (gap 2.1s); stop when X-RateLimit-Remaining≤5."
+            "Fixture-cap 1–3/min (default --max-per-min 2); yield-to-live when "
+            "fixed windows / due−15min / live busy / rescue / remaining≤24. "
+            "shared_api_yield backfill ≤16/min; Account plan limit applies."
         ),
+        "paused": state.get("paused"),
+        "paused_reason": state.get("paused_reason"),
+        "hist_mode": state.get("hist_mode"),
+        "max_per_min": state.get("max_per_min"),
         "state_summary": {
             k: state.get(k)
             for k in (
@@ -109,6 +115,10 @@ def main() -> int:
                 "books",
                 "phase",
                 "notes",
+                "paused",
+                "paused_reason",
+                "hist_mode",
+                "max_per_min",
             )
             if k in state
         },

@@ -165,7 +165,7 @@ function toX1x2Cell(p: ApiX1x2Point | null | undefined): X1x2Cell | null {
   }
 }
 
-/** 0.3.21：竞彩胜平负；空壳（msi_empty）也保留，供灰字 */
+/** 0.3.21：竞彩胜平负；空壳（collector_empty）也保留，供灰字 */
 function toJc1x2Cell(p: ApiX1x2Point | null | undefined): Jc1x2Cell | null {
   if (!p) return null
   const base = toX1x2Cell(p)

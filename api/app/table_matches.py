@@ -67,6 +67,8 @@ REAL_PHASES: tuple[str, ...] = ("mid_real", "close_real")
 CALC_PHASES = PHASES  # 返还率 / 凯利只按规则值（open/mid/close）计算；*_real 仅原始值（术语文档未写）
 RESULT_VISIBLE_AFTER_KICKOFF = timedelta(hours=3)  # 对齐 v2_0-result-ingest-schedule.md「开赛+3h 主拉」
 LAST_PREMATCH_FRESH_MINUTES = 15  # 2026-10-08 定：minutes_before_kickoff ∈ [0,15] → stale=false
+# 竞彩官网本地采集写入的 source 名称：sporttery_local 为公开名称，sporttery_msi 为旧名称，两者等价。
+_JC_LOCAL_SOURCES = ("sporttery_local", "sporttery_msi")
 LIVE_RULE_1110 = (11, 10)  # 竞彩日 11:10（即时（11:10），label=rule_1110）
 DEFAULT_BASELINE_MIN_N = 20
 PHASE_TARGET = cs.PHASE_TARGET  # "exact_minute"（旧导出 = "hour_floor"）
@@ -382,8 +384,8 @@ class _Data:
                 # 同 (match, phase) 多 source 时优先 sporttery_local，其次任意非 legacy
                 key = (r["match_id"], r["phase"])
                 prev = self.jc_had.get(key)
-                if prev is None or (r["source"] == "sporttery_local") or (
-                    prev["source"] not in ("sporttery_local",) and r["source"] != "legacy_home_only"
+                if prev is None or (r["source"] in _JC_LOCAL_SOURCES) or (
+                    prev["source"] not in _JC_LOCAL_SOURCES and r["source"] != "legacy_home_only"
                 ):
                     self.jc_had[key] = r
         self.jc_hhad: dict[tuple, sqlite3.Row] = {}

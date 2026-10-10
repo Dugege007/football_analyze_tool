@@ -316,6 +316,8 @@ def test_seed_guard_skips_n5_family(tmp_path):
     conn = _tmp_copy(tmp_path, "v2d3")
     pending, _ = seed.load_pending_rows(seed.CSV_PATH)
     ids = {r["id"] for r in pending}
+    if not ids:
+        pytest.skip("影子方案台账只有表头：公开仓不含真实台账（research/shadow-ledger/shadow-schemes.csv）")
     assert "N5-PIN" in ids  # CSV 已有 N5-PIN 的 pending_shadow 行——保护必须拦住
     reasons = {r["id"]: seed.guard_reason(conn, r) for r in pending}
     assert reasons["N5-PIN"].startswith("blocked_until_pipeline")

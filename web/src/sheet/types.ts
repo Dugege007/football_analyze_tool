@@ -690,7 +690,7 @@ export interface X1x2Cell {
   kellyBase: 'pinnacle' | 'multi_avg' | null
 }
 
-/** 0.3.21 竞彩胜平负格（可空壳：msi_empty 仍保留，供灰字） */
+/** 0.3.21 竞彩胜平负格（可空壳：collector_empty 仍保留，供灰字） */
 export interface Jc1x2Cell extends X1x2Cell {
   complete: boolean | null
   incomplete: boolean
@@ -793,7 +793,7 @@ export interface SheetRow {
   x1x2: Record<X1x2Book, { open: X1x2Cell | null; close: X1x2Cell | null }>
   /** 欧赔接口收盘价（api_closing，参考，只在完赛后显示；不参与任何规则） */
   x1x2ClosingRef: Record<X1x2Book, { home: number | null; draw: number | null; away: number | null; fetchedAt: string | null } | null>
-  /** 竞彩胜平负；缺键时三角为 null；有键但 MSI 空仍可能有 incomplete/msi 壳 */
+  /** 竞彩胜平负；缺键时三角为 null；有键但本地采集器没有数据时仍可能保留 incomplete 空壳 */
   jc: { open: Jc1x2Cell | null; mid: Jc1x2Cell | null; close: Jc1x2Cell | null }
   /** 接口是否带了 jc_1x2 对象（现网缺键 → false，不出列也可） */
   jcPresent: boolean
@@ -881,4 +881,12 @@ export const DAILY_CHECK_LABEL: Record<string, string> = {
   own_1110_out_of_window: '11:10 自采超出 11:00–11:20（采集延迟），主值改用时间线表',
   postpone_ts_unknown: '推迟消息发布时间未知',
   postpone_void_pending: '推迟场作废与否待核对',
+}
+
+/**
+ * 竞彩官方数据缺失原因是否为「本地采集器没有数据」。
+ * 接口 0.3.22 起返回 collector_empty；更早的版本返回 msi_empty，两者含义相同，都按同一种情况处理。
+ */
+export function isCollectorEmpty(reason: string | null | undefined): boolean {
+  return reason === 'collector_empty' || reason === 'msi_empty'
 }

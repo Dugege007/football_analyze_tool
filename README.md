@@ -96,7 +96,7 @@ cd api
 uvicorn app.main:app --host 127.0.0.1 --port 8787
 # 另开一个终端：
 curl -s http://127.0.0.1:8787/health
-# → {"ok":true,"version":"0.3.22","dual_write_odds_asian":false,"meta":{"db":"live","promoted":true,"readonly":true}}
+# → {"ok":true,"version":"0.3.23","dual_write_odds_asian":false,"meta":{"db":"live","promoted":true,"readonly":true}}
 ```
 
 **采集 dry-run**（不调任何 API、不写任何文件，只检查 key 是否配置、库路径与双写开关）：

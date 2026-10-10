@@ -96,9 +96,11 @@ import hashlib
 import json
 import os
 import signal
+import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import urllib.error
@@ -125,6 +127,13 @@ RESERVE = 8              # （账户上限） × 20%
 WIN_BEFORE = timedelta(minutes=2)
 WIN_AFTER = timedelta(minutes=10)
 LOOP_SEC = 60
+# 心跳／睡眠：主循环用 monotonic 预算，拆短睡眠并每小段刷新 heartbeat，避免
+# （1）墙钟回拨把 time.time()-t0 算成负值 → sleep 数十分钟；
+# （2）整段 sleep 期间不写心跳 → 守护误判／真卡死都难以及时发现。
+HB_INTERVAL_SEC = 10.0       # 心跳线程兜底刷新间隔（只写 watchdog_ts，不冒充业务进度）
+SLEEP_CHUNK_SEC = 5.0        # 业务侧最长单段 sleep；其间可响应 SIGTERM、刷新 heartbeat.ts
+HTTP_TIMEOUT_SEC = 60        # urlopen／默认 socket 硬超时（含防 DNS 无限挂起）
+MAX_SINGLE_SLEEP_SEC = 70.0  # 任意一次 interruptible_sleep 上限（配额暂停 61s 仍够用）
 PLAN_REFRESH = {0: timedelta(minutes=60), 1: timedelta(minutes=120)}  # 相对今天的竞彩日偏移
 INGEST_LAG_MIN = (-15.0, 10.0)  # fetched − target（分钟）在此区间才入副本
 WATER_MIN, WATER_MAX = 0.50, 1.50
@@ -189,10 +198,19 @@ def jload(p: Path, default):
 
 
 def jdump(p: Path, obj) -> None:
+    """原子写盘。临时文件带 pid/线程/随机后缀，避免多线程共用同一 *.tmp 时 replace 竞态。"""
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(p.suffix + ".tmp")
-    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(p)
+    payload = json.dumps(obj, ensure_ascii=False, indent=2) + "\n"
+    tmp = p.with_name(f"{p.name}.tmp.{os.getpid()}.{threading.get_ident()}.{time.time_ns()}")
+    try:
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.replace(p)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def append_jsonl(p: Path, obj) -> None:
@@ -203,6 +221,69 @@ def append_jsonl(p: Path, obj) -> None:
 
 def health(event: str, **kw) -> None:
     append_jsonl(D_LOG / "health.jsonl", {"ts": iso(now_cn()), "event": event, **kw})
+
+
+# ----------------------------------------------------------------------------- heartbeat / interruptible sleep
+# 守护读 logs/heartbeat.json 的 ts：须由主循环进度刷新。心跳线程只写 watchdog_ts，
+# 避免主线程卡在 HTTP／锁上时仍被当成“活着”。
+
+_hb_lock = threading.Lock()
+_hb_status: dict = {}
+_stop_event = threading.Event()
+
+
+def touch_heartbeat(*, progress: bool = True, **fields) -> dict:
+    """写入 heartbeat.json。progress=True 时更新业务进度 ts（守护看这个）；
+    progress=False 时只刷新 watchdog_ts（心跳线程兜底）。
+    整段更新与落盘都在锁内，避免与心跳线程共用固定 *.tmp 时 FileNotFoundError。"""
+    with _hb_lock:
+        _hb_status.update(fields)
+        _hb_status["pid"] = os.getpid()
+        # 成功 tick 后清掉粘住的 error，否则守护摘要一直带着旧竞态文案
+        if progress and fields.get("phase") == "tick_done" and "error" not in fields:
+            _hb_status.pop("error", None)
+        now_s = iso(now_cn())
+        if progress:
+            _hb_status["ts"] = now_s
+        _hb_status["watchdog_ts"] = now_s
+        hb = dict(_hb_status)
+        jdump(D_LOG / "heartbeat.json", hb)
+    return hb
+
+
+def interruptible_sleep(seconds: float, stop_event: threading.Event | None = None,
+                        *, refresh_heartbeat: bool = True) -> bool:
+    """按 monotonic 拆短睡眠。返回 True 表示因 stop 提前结束。
+    单次调用硬顶 MAX_SINGLE_SLEEP_SEC，防止墙钟异常把 sleep 算成数十分钟。"""
+    stop_event = stop_event or _stop_event
+    try:
+        sec = float(seconds)
+    except (TypeError, ValueError):
+        sec = 0.0
+    if sec <= 0:
+        return stop_event.is_set()
+    sec = min(sec, MAX_SINGLE_SLEEP_SEC)
+    deadline = time.monotonic() + sec
+    while not stop_event.is_set():
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return False
+        time.sleep(min(SLEEP_CHUNK_SEC, left))
+        if refresh_heartbeat:
+            try:
+                touch_heartbeat(progress=True, sleep_left_s=round(max(0.0, deadline - time.monotonic()), 2))
+            except Exception:
+                pass
+    return True
+
+
+def _heartbeat_watchdog_loop() -> None:
+    """后台兜底：定期写 watchdog_ts。不更新业务 ts，避免掩盖主循环卡死。"""
+    while not _stop_event.wait(HB_INTERVAL_SEC):
+        try:
+            touch_heartbeat(progress=False, hb_thread=True)
+        except Exception:
+            pass
 
 
 def short_code(number: str | None) -> str | None:
@@ -229,17 +310,17 @@ class Client:
         for attempt in range(4):
             wait = GAP_SEC - (time.time() - self.last)
             if wait > 0:
-                time.sleep(wait)
+                interruptible_sleep(wait, refresh_heartbeat=True)
             if self.remaining is not None and self.remaining <= RESERVE:
                 health("quota_pause", remaining=self.remaining, sleep_s=61)
-                time.sleep(61)
+                interruptible_sleep(61, refresh_heartbeat=True)
                 self.remaining = None
             url = BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
             req = urllib.request.Request(url, headers={"Authorization": "Bearer " + self.key,
                                                        "Accept": "application/json"})
             t0 = time.time()
             try:
-                r = urllib.request.urlopen(req, timeout=60)
+                r = urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SEC)
                 code, body, h = r.status, r.read(), r.headers
             except urllib.error.HTTPError as e:
                 code, body, h = e.code, e.read(), e.headers
@@ -260,7 +341,7 @@ class Client:
             if code == 429 or code >= 500 or code == -1:
                 ra = float((h.get("Retry-After") if h else None) or 10)
                 health("api_retry", name=name, http=code, sleep_s=ra + 1, attempt=attempt)
-                time.sleep(ra + 1)
+                interruptible_sleep(ra + 1, refresh_heartbeat=True)
                 continue
             try:
                 data = json.loads(body)
@@ -1284,12 +1365,12 @@ def tick(cl: Client) -> dict:
         except Exception as e:
             health("ingest_error", jingcai_date=D, error=str(e)[:300], tb=traceback.format_exc()[-800:])
         summary(D)
-    hb = {"ts": iso(now_cn()), "pid": os.getpid(), "due": len(due), "groups": len(groups),
-          "missed_new": len(missed), "calls_total": cl.calls, "remaining": cl.remaining,
-          "plans": {p["jingcai_date"]: p["n_targets"] for p in plans}}
-    jdump(D_LOG / "heartbeat.json", hb)
+    hb = touch_heartbeat(progress=True, due=len(due), groups=len(groups),
+                         missed_new=len(missed), calls_total=cl.calls, remaining=cl.remaining,
+                         plans={p["jingcai_date"]: p["n_targets"] for p in plans},
+                         phase="tick_done")
     if groups or missed or now.minute % 30 == 0:
-        health("tick", **{k: v for k, v in hb.items() if k != "ts"})
+        health("tick", **{k: v for k, v in hb.items() if k not in ("ts", "watchdog_ts", "phase", "hb_thread", "sleep_left_s")})
     return hb
 
 
@@ -1302,16 +1383,32 @@ def daemon() -> None:
         print("daemon already running")
         return
     (D_LOG / "daemon.pid").write_text(str(os.getpid()))
+    # DNS／连接硬上限：urlopen timeout 管读写，setdefaulttimeout 兜底部分解析挂起
+    try:
+        socket.setdefaulttimeout(HTTP_TIMEOUT_SEC)
+    except Exception:
+        pass
     cl = Client()
-    stop = {"v": False}
-    signal.signal(signal.SIGTERM, lambda *a: stop.__setitem__("v", True))
-    health("daemon_start", pid=os.getpid(), loop_sec=LOOP_SEC)
-    while not stop["v"]:
-        t0 = time.time()
+    _stop_event.clear()
+    signal.signal(signal.SIGTERM, lambda *a: _stop_event.set())
+    signal.signal(signal.SIGINT, lambda *a: _stop_event.set())
+    touch_heartbeat(progress=True, due=0, groups=0, missed_new=0, calls_total=0,
+                    remaining=None, plans={}, phase="daemon_start")
+    hb_thr = threading.Thread(target=_heartbeat_watchdog_loop, name="live-hb-watchdog", daemon=True)
+    hb_thr.start()
+    health("daemon_start", pid=os.getpid(), loop_sec=LOOP_SEC,
+           hb_interval_sec=HB_INTERVAL_SEC, sleep_chunk_sec=SLEEP_CHUNK_SEC,
+           http_timeout_sec=HTTP_TIMEOUT_SEC)
+    while not _stop_event.is_set():
+        t0 = time.monotonic()  # 绝不用墙钟算剩余睡眠，避免回拨把 sleep 拉长到数十分钟
         try:
             tick(cl)
         except Exception as e:
             health("tick_error", error=str(e)[:300], tb=traceback.format_exc()[-800:])
+            try:
+                touch_heartbeat(progress=True, phase="tick_error", error=str(e)[:120])
+            except Exception:
+                pass
         # 每天 12:05 给前一竞彩日出最终汇总
         n = now_cn()
         if n.hour == 12 and n.minute == 5:
@@ -1319,8 +1416,14 @@ def daemon() -> None:
                 summary((n.date() - timedelta(days=1)).isoformat())
             except Exception:
                 pass
-        time.sleep(max(1.0, LOOP_SEC - (time.time() - t0)))
+        remain = LOOP_SEC - (time.monotonic() - t0)
+        # 硬顶：即使单调时钟异常，单轮补睡也不超过 LOOP_SEC
+        interruptible_sleep(max(1.0, min(remain, float(LOOP_SEC))), refresh_heartbeat=True)
     health("daemon_stop", pid=os.getpid())
+    try:
+        touch_heartbeat(progress=True, phase="daemon_stop")
+    except Exception:
+        pass
 
 
 def ensure_daemon() -> str:

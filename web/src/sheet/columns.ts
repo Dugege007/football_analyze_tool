@@ -7,7 +7,7 @@
 import type { ColDef, ColGroupDef, TooltipCallbackParams, ValueFormatterParams } from 'ag-grid-community'
 import dayjs from 'dayjs'
 import type { AhBook, OpenInfo, Phase, SheetRow, ViewId } from './types'
-import { AH_BOOKS, BOOK_LABEL, EXCEPTION_DESC, PARALLEL_BOOK_LABEL, PHASE_HINT, PHASE_LABEL, SETTLE_LABEL } from './types'
+import { AH_BOOKS, BOOK_LABEL, EXCEPTION_DESC, PARALLEL_BOOK_LABEL, PHASE_HINT, PHASE_LABEL, SETTLE_LABEL, isCollectorEmpty } from './types'
 import { formatHandicap, formatHandicapCn, formatHandicapLine, formatMove, lineMove } from './handicap'
 import { RR_WATER_TIP, buildCellClassRules, evaluateCell, fallbackLineTip, openMissingTip, rrWaterKind, type ColMeta, type RuleContext } from './rules'
 import {
@@ -80,7 +80,7 @@ export function computePresence(rows: SheetRow[]): Presence {
     multiAvg: any((r) => r.multiAvgProb?.home),
     jcHome: any((r) => r.jc.open?.home ?? r.jc.mid?.home ?? r.jc.close?.home),
     jcDrawAway: any((r) => r.jc.open?.draw ?? r.jc.mid?.draw ?? r.jc.close?.draw ?? r.jc.open?.away ?? r.jc.close?.away),
-    /** 0.3.21：接口带了 jc_1x2（含仅 incomplete / msi 壳） */
+    /** 0.3.21：接口带了 jc_1x2（含仅 incomplete 或本地采集器无数据的空壳） */
     jcPresent: rows.some((r) => r.jcPresent),
     jcHhadPresent: rows.some((r) => r.jcHhadPresent),
     confidence: any((r) => r.confidence),
@@ -147,7 +147,7 @@ export function formatJc1x2Cell(
   side: 'home' | 'draw' | 'away',
 ): string {
   if (!c) return '—'
-  if (c.missingReason === 'msi_empty' || (c.available === false && c.home == null && c.draw == null && c.away == null)) {
+  if (isCollectorEmpty(c.missingReason) || (c.available === false && c.home == null && c.draw == null && c.away == null)) {
     return '暂无竞彩官方数据'
   }
   if (c.outOfWindow) {
@@ -177,7 +177,7 @@ export function jc1x2Tip(
 ): string | null {
   if (!c) return null
   const lines: string[] = []
-  if (c.missingReason === 'msi_empty') lines.push('暂无竞彩官方数据（MSI 未通或未采）')
+  if (isCollectorEmpty(c.missingReason)) lines.push('暂无竞彩官方数据（本地采集器未接通或尚未采集）')
   else if (c.incomplete || c.missingReason === 'legacy_home_only') {
     lines.push('竞彩胜平负不完整，缺平/负等项；不拿单边主胜冒充完整盘')
     if (c.home != null) lines.push(`仅有主胜 ${fmtNum(c.home, 2)}（对照，非完整市场）`)
@@ -215,7 +215,7 @@ export function formatJcHhadLine(
   } | null | undefined,
 ): string {
   if (!c) return '—'
-  if (c.missingReason === 'msi_empty' || (c.available === false && c.goalLine == null)) return '暂无竞彩官方数据'
+  if (isCollectorEmpty(c.missingReason) || (c.available === false && c.goalLine == null)) return '暂无竞彩官方数据'
   if (c.outOfWindow) return '自采超出 11:00–11:20'
   if (c.incomplete) return '竞彩让球胜平负不完整'
   if (c.goalLine == null && c.decisionLine == null) return '—'
@@ -245,7 +245,7 @@ export function jcHhadTip(
 ): string | null {
   if (!c) return null
   const lines: string[] = []
-  if (c.missingReason === 'msi_empty') lines.push('暂无竞彩官方数据（MSI 未通或未采）')
+  if (isCollectorEmpty(c.missingReason)) lines.push('暂无竞彩官方数据（本地采集器未接通或尚未采集）')
   if (c.missingReason === 'no_line_visible_at_decision') lines.push('决策时刻无可开让球线')
   if (c.goalLine != null || c.decisionLine != null) {
     lines.push(`决策线 ${formatHandicapLine(c.goalLine ?? c.decisionLine)}（主格只用决策时刻线）`)
@@ -1126,7 +1126,7 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
     })
   }
 
-  // 0.3.21 竞彩胜平负：有 jc_1x2 键或有赔率就出列；incomplete/msi 灰字，不拿 home_only 冒充完整
+  // 0.3.21 竞彩胜平负：有 jc_1x2 键或有赔率就出列；incomplete 与本地采集器无数据都灰字，不拿 home_only 冒充完整
   if (vg.jc && (pr.jcPresent || pr.jcHome || pr.jcDrawAway)) {
     const phases: Array<'open' | 'mid' | 'close'> = ['open', 'mid', 'close']
     const sides = (
@@ -1158,7 +1158,7 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
               const c = p.data?.jc[phase]
               if (!c) return false
               return (
-                c.missingReason === 'msi_empty' ||
+                isCollectorEmpty(c.missingReason) ||
                 c.incomplete ||
                 c.outOfWindow ||
                 c.missingReason === 'legacy_home_only'
@@ -1172,7 +1172,7 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
     cols.push({
       groupId: 'jc',
       headerName: '竞彩胜平负',
-      headerTooltip: '完整盘来自 odds_jc_had；仅 home_only 灰字「不完整」；MSI 空灰字「暂无竞彩官方数据」；超窗不当主值',
+      headerTooltip: '完整盘来自 odds_jc_had；仅 home_only 灰字「不完整」；本地采集器没有数据时灰字「暂无竞彩官方数据」；超窗不当主值',
       openByDefault: true,
       marryChildren: true,
       children,
@@ -1195,7 +1195,7 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
           'hl-approx': (p) => {
             const c = p.data?.jcHhad[phase]
             if (!c) return false
-            return c.missingReason === 'msi_empty' || c.incomplete || c.outOfWindow || c.postDecisionLineChange
+            return isCollectorEmpty(c.missingReason) || c.incomplete || c.outOfWindow || c.postDecisionLineChange
           },
         },
         tooltip: (p: TooltipCallbackParams<SheetRow>) => jcHhadTip(p.data?.jcHhad[phase]),

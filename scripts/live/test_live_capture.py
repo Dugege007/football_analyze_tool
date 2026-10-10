@@ -452,3 +452,48 @@ def test_ingest_pending_rows_then_assign(env):
                               " AND book='macau' AND market='asian'").fetchone()[0])
     assert ex["postponed_announced_at"] is None and ex["kickoff_original"] == lc.iso(PH)
     assert ex["postpone_void_hours"] == 24 and ex["postpone_void_src"] == "OE67/2018-art11"
+
+
+# --- heartbeat / interruptible_sleep (2026-10-10 stall fix) ---
+
+def test_interruptible_sleep_caps_huge_and_uses_chunks(env, monkeypatch):
+    """墙钟回拨式超大 sleep 必须被硬顶；拆短后可被 stop 打断。"""
+    sleeps = []
+    monkeypatch.setattr(lc.time, "sleep", lambda s: sleeps.append(s))
+    # 假装 monotonic 不前进，避免测试空转；用 side effect 推进
+    mono = {"v": 1000.0}
+    monkeypatch.setattr(lc.time, "monotonic", lambda: mono["v"])
+    real_sleep = sleeps.append
+    def fake_sleep(s):
+        sleeps.append(s)
+        mono["v"] += s
+    monkeypatch.setattr(lc.time, "sleep", fake_sleep)
+    # 请求 5000 秒 → 硬顶 MAX_SINGLE_SLEEP_SEC
+    stopped = lc.interruptible_sleep(5000.0, refresh_heartbeat=False)
+    assert stopped is False
+    assert abs(sum(sleeps) - lc.MAX_SINGLE_SLEEP_SEC) < 1e-6
+    assert max(sleeps) <= lc.SLEEP_CHUNK_SEC + 1e-9
+    # stop 可打断
+    sleeps.clear()
+    mono["v"] = 2000.0
+    ev = lc.threading.Event()
+    def fake_sleep2(s):
+        sleeps.append(s)
+        mono["v"] += s
+        if len(sleeps) >= 2:
+            ev.set()
+    monkeypatch.setattr(lc.time, "sleep", fake_sleep2)
+    assert lc.interruptible_sleep(60.0, ev, refresh_heartbeat=False) is True
+    assert len(sleeps) >= 2
+
+
+def test_touch_heartbeat_progress_vs_watchdog(env):
+    lc._hb_status.clear()
+    hb1 = lc.touch_heartbeat(progress=True, due=3, phase="tick_done")
+    assert hb1["due"] == 3 and "ts" in hb1 and hb1["ts"] == hb1["watchdog_ts"]
+    ts1 = hb1["ts"]
+    hb2 = lc.touch_heartbeat(progress=False, hb_thread=True)
+    assert hb2["ts"] == ts1  # 业务 ts 不被心跳线程推进
+    assert hb2["watchdog_ts"] >= ts1 or hb2.get("hb_thread") is True
+    raw = (lc.D_LOG / "heartbeat.json").read_text(encoding="utf-8")
+    assert "watchdog_ts" in raw

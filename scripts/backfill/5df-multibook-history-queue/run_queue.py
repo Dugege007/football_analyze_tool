@@ -2,7 +2,9 @@
 """Worker: pull macauslot+pinnacle AH snap + history for pending fixtures.
 
 Writes only under this queue dir (raw/ + logs/ + reports/). No prod DB.
-Rate: ≤30/min (gap 2.1s). Stop if X-RateLimit-Remaining ≤ 5.
+Rate (2026-10-09 拍板)：默认 **每分钟最多补 1 场**（完整数据档对齐；`--max-per-min` 可调）；
+今日 live due / 固定让路窗 / rescue / remaining 低 → 暂停（见 hist_yield.py）。
+仍走 shared_api_yield（补数合计 ≤16/min；Remaining≤24 停）。
 Checkpoint after each match. Full run (no --limit) requires CONFIRM_FULL_RUN=1.
 """
 from __future__ import annotations
@@ -58,6 +60,10 @@ _yield_sys.path.append(str(_MA_API_ROOT / "app"))  # 追加在末尾，不遮蔽
 import shared_api_yield as _yield_mod  # noqa: E402
 _YIELD = _yield_mod.Gate("run_queue")
 
+ROOT = Path(__file__).resolve().parent
+_yield_sys.path.insert(0, str(ROOT))
+import hist_yield as _hy  # noqa: E402
+
 
 def _gated_urlopen(req, timeout=60):
     _YIELD.before_request()
@@ -70,8 +76,6 @@ def _gated_urlopen(req, timeout=60):
     return r
 
 
-
-ROOT = Path(__file__).resolve().parent
 QUEUE = ROOT / "queue"
 RAW_ODDS = ROOT / "raw" / "odds"
 RAW_HIST = ROOT / "raw" / "hist"
@@ -80,9 +84,11 @@ REPORTS = ROOT / "reports"
 BASE = "https://api.5dollarfootballapi.com/v1"
 BOOKS = ["macauslot", "pinnacle"]
 MARKET = "asian"
-GAP_SEC = 2.1  # ≤30/min
-RESERVE = 5
+# API 层最小间隔仍由 shared_api_yield 账本约束；此处仅作客户端兜底
+GAP_SEC_FALLBACK = 3.8
+RESERVE = 5  # 本地二次闸；主闸是 shared Remaining≤24 + hist_yield remaining_floor
 MAX_ERRORS = 5
+DEFAULT_MAX_PER_MIN = 1
 TZ = timezone(timedelta(hours=8))
 DUAL_WRITE_MARKER = ROOT / "DUAL_WRITE.off"
 LEGACY_HIST = Path(
@@ -142,10 +148,10 @@ def update_state(**kwargs) -> None:
 
 
 class RateClient:
-    def __init__(self, key: str | None, *, dry_run: bool):
+    def __init__(self, key: str | None, *, dry_run: bool, gap: float = GAP_SEC_FALLBACK):
         self.key = key
         self.dry_run = dry_run
-        self.gap = GAP_SEC
+        self.gap = gap
         self.last = 0.0
         self.calls = 0
         self.remaining = None
@@ -296,13 +302,103 @@ def pull_fixture(client: RateClient, row: dict, *, dry_run: bool) -> dict:
     return report
 
 
+def _yield_kwargs(args: argparse.Namespace) -> dict:
+    return {
+        "busy_min": args.busy_min,
+        "remaining_floor": args.remaining_floor,
+        "due_avoid_min": args.due_avoid_min,
+        "check_recent_write": not args.no_recent_write_check,
+    }
+
+
+def wait_until_idle(args: argparse.Namespace, run: dict, *, max_wait_s: float = 3600.0) -> str | None:
+    """阻塞直到空闲或超时。返回最终仍存在的 reason（None=可跑）。"""
+    t0 = time.time()
+    while True:
+        reason = _hy.check_yield_reason(**_yield_kwargs(args))
+        if reason is None:
+            update_state(
+                paused=False,
+                paused_reason=None,
+                hist_mode="running",
+                max_per_min=args.max_per_min,
+            )
+            return None
+        update_state(
+            paused=True,
+            paused_reason=reason,
+            hist_mode="paused_yield",
+            max_per_min=args.max_per_min,
+        )
+        run["last_paused_reason"] = reason
+        if not args.yield_wait:
+            return reason
+        if time.time() - t0 >= max_wait_s:
+            return reason
+        sleep_s = _hy.suggest_sleep_seconds(reason, busy_min=args.busy_min)
+        sleep_s = min(max(sleep_s, 5.0), 180.0)
+        time.sleep(sleep_s)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="5DF multibook history queue worker")
     ap.add_argument("--dry-run", action="store_true", help="Plan calls only; no API")
     ap.add_argument("--limit", type=int, default=None, help="Max fixtures this run")
+    ap.add_argument(
+        "--max-per-min",
+        type=float,
+        default=DEFAULT_MAX_PER_MIN,
+        help="Fixtures per minute cap (default 1; fullmatch档对齐). Spaces starts by 60/max.",
+    )
+    ap.add_argument(
+        "--yield-check",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Pause when live/rescue needs quota (default: on). --no-yield-check to disable.",
+    )
+    ap.add_argument(
+        "--yield-wait",
+        action="store_true",
+        help="When yielding, sleep and resume instead of exiting",
+    )
+    ap.add_argument(
+        "--yield-check-only",
+        action="store_true",
+        help="Print idle/paused_reason and exit (no pull)",
+    )
+    ap.add_argument("--busy-min", type=float, default=_hy.DEFAULT_LIVE_BUSY_MIN)
+    ap.add_argument("--remaining-floor", type=int, default=_hy.DEFAULT_REMAINING_FLOOR)
+    ap.add_argument("--due-avoid-min", type=int, default=_hy.DUE_AVOID_MIN)
+    ap.add_argument(
+        "--no-recent-write-check",
+        action="store_true",
+        help="Do not pause solely because ingest/captured mtime is fresh",
+    )
     args = ap.parse_args()
 
     assert_dual_write_off()
+
+    if args.max_per_min < 0.2 or args.max_per_min > 10:
+        raise SystemExit("--max-per-min out of sane range (0.2–10)")
+
+    if args.yield_check_only:
+        reason = _hy.check_yield_reason(**_yield_kwargs(args))
+        out = {
+            "at": now_iso(),
+            "idle": reason is None,
+            "paused_reason": reason,
+            "suggest_sleep_s": _hy.suggest_sleep_seconds(reason, busy_min=args.busy_min),
+            "max_per_min": args.max_per_min,
+            "dual_write": "OFF",
+        }
+        update_state(
+            paused=reason is not None,
+            paused_reason=reason,
+            hist_mode="probe",
+            max_per_min=args.max_per_min,
+        )
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0 if reason is None else 2
 
     if args.limit is None and not args.dry_run:
         if os.environ.get("CONFIRM_FULL_RUN", "").strip() != "1":
@@ -319,10 +415,15 @@ def main() -> int:
         )
     )
 
+    fixture_gap = 60.0 / args.max_per_min
     run = {
         "started_at": now_iso(),
         "dry_run": args.dry_run,
         "limit": args.limit,
+        "max_per_min": args.max_per_min,
+        "fixture_gap_s": round(fixture_gap, 2),
+        "yield_check": args.yield_check,
+        "yield_wait": args.yield_wait,
         "pending_before": len(pending),
         "pulled_ok": 0,
         "errors": [],
@@ -330,12 +431,26 @@ def main() -> int:
         "api_calls": 0,
         "rate_remaining": None,
         "dual_write": "OFF",
+        "paused_events": [],
     }
 
     if not pending:
         run["stop"] = "no_pending"
+        update_state(paused=False, paused_reason=None, hist_mode="idle_empty", pending=0)
         print(json.dumps(run, ensure_ascii=False, indent=2))
         return 0
+
+    if args.yield_check:
+        reason = wait_until_idle(args, run)
+        if reason is not None:
+            run["stop"] = "paused_yield"
+            run["paused_reason"] = reason
+            run["finished_at"] = now_iso()
+            out_path = REPORTS / f"run_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.json"
+            REPORTS.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(run, ensure_ascii=False, indent=2))
+            return 0
 
     key = os.environ.get("FIVEDOLLAR_FOOTBALL_API_KEY")
     client = RateClient(key, dry_run=args.dry_run)
@@ -344,9 +459,9 @@ def main() -> int:
     fill_log = LOG_DIR / "fill_report.jsonl"
 
     processed = 0
-    # Work on a mutable copy; dry-run never mutates pending file content permanently
     original_pending = list(pending)
     work = list(pending)
+    last_fixture_started = 0.0
 
     while work:
         if args.limit is not None and processed >= args.limit:
@@ -354,8 +469,24 @@ def main() -> int:
             break
         if client.stop_for_quota():
             run["stop"] = "rate_reserve"
+            update_state(paused=True, paused_reason="rate_reserve", hist_mode="paused_quota")
             break
 
+        if args.yield_check:
+            reason = wait_until_idle(args, run)
+            if reason is not None:
+                run["stop"] = "paused_yield"
+                run["paused_reason"] = reason
+                run["paused_events"].append({"at": now_iso(), "reason": reason})
+                break
+
+        # 场次级限速：每分钟最多 max_per_min 场（dry-run 不睡，方便冒烟）
+        if not args.dry_run:
+            since = time.time() - last_fixture_started
+            if last_fixture_started > 0 and since < fixture_gap:
+                time.sleep(fixture_gap - since)
+
+        last_fixture_started = time.time()
         row = work.pop(0)
         rep = pull_fixture(client, row, dry_run=args.dry_run)
         append_jsonl(fill_log, rep)
@@ -391,7 +522,14 @@ def main() -> int:
             }
             append_jsonl(QUEUE / "done.jsonl", done_row)
             write_jsonl(QUEUE / "pending.jsonl", work)
-            update_state(pending=len(work), done=len(load_jsonl(QUEUE / "done.jsonl")))
+            update_state(
+                pending=len(work),
+                done=len(load_jsonl(QUEUE / "done.jsonl")),
+                paused=False,
+                paused_reason=None,
+                hist_mode="running",
+                max_per_min=args.max_per_min,
+            )
         else:
             # put back to front for retry later; keep rest
             work.insert(0, row)
@@ -416,6 +554,15 @@ def main() -> int:
 
     if args.dry_run:
         write_jsonl(QUEUE / "pending.jsonl", original_pending)
+
+    if run.get("stop") != "paused_yield":
+        update_state(
+            paused=False,
+            paused_reason=None,
+            hist_mode="stopped",
+            last_stop=run.get("stop"),
+            pending=len(load_jsonl(QUEUE / "pending.jsonl")),
+        )
 
     run["finished_at"] = now_iso()
     run["pending_after"] = len(load_jsonl(QUEUE / "pending.jsonl"))
