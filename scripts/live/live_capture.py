@@ -85,7 +85,13 @@ _BACKUP_DIR = _rp_env('BACKUP_DIR', _REPO_ROOT / 'backups' / 'football')
 
 import argparse
 import csv
-import fcntl
+# 跨平台文件锁：Linux 与 macOS 使用 fcntl，Windows 使用 api/app/portable_lock.py 中基于 msvcrt 的实现。
+import importlib.util as _pl_util
+import pathlib as _pl_pathlib
+_pl_spec = _pl_util.spec_from_file_location(
+    "_portable_lock", _pl_pathlib.Path(__file__).resolve().parents[2] / "api/app/portable_lock.py")
+fcntl = _pl_util.module_from_spec(_pl_spec)
+_pl_spec.loader.exec_module(fcntl)
 import hashlib
 import json
 import os

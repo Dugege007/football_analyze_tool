@@ -76,3 +76,9 @@ config/strategy_params.json
 api/config/kickoff_drift.json
 api/config/leak_suspect.json
 research/shadow-ledger/*.local.csv
+
+# 网页界面（web/）
+!web/.env.example
+web/node_modules/
+web/dist/
+web/.env.local

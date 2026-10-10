@@ -54,10 +54,19 @@ async def _readonly_guard(request, call_next):
     return await call_next(request)
 
 
+# 跨源资源共享（Cross-Origin Resource Sharing，简称 CORS）允许的前端来源。
+# 通过环境变量 APP_CORS_ORIGINS 配置，多个来源用英文逗号分隔；填写 * 表示允许任意来源（此时不携带凭据）。
+# 默认只允许本机网页界面开发服务器（端口 5173）。
+_cors_raw = os.environ.get(
+    "APP_CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173"
+)
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+_cors_any = "*" in _cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=["*"] if _cors_any else _cors_origins,
+    allow_credentials=not _cors_any,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -47,7 +47,11 @@ _BACKUP_DIR = _rp_env('BACKUP_DIR', _REPO_ROOT / 'backups' / 'football')
 # --- end path config ---
 
 
-import fcntl
+# 跨平台文件锁（Windows 使用 msvcrt）。本模块既可能以 app.shared_api_yield 导入，也可能把 api/app 加入搜索路径后直接导入。
+try:
+    from app import portable_lock as fcntl
+except ImportError:
+    import portable_lock as fcntl  # type: ignore[no-redef]
 import json
 import os
 import time

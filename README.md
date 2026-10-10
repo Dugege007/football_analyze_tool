@@ -1,4 +1,4 @@
-# football_analyze_tool
+# football-analyze-tool
 
 > 竞彩足球亚盘分析工具链：本地只读 API + 多公司赔率定时采集 + 漏点补救 + 口径文档与影子台账。
 > A toolkit for Jingcai (China Sports Lottery) football Asian-handicap analysis: local read-only API, scheduled multi-bookmaker odds capture, gap rescue, and data-convention docs.
@@ -8,6 +8,7 @@
 本仓库是作者足球分析工作流中**可公开的工具部分**：
 
 - **`api/`**：基于 FastAPI 的本地 API，读取 SQLite 库，提供赛程、盘口、预测、数据表（`/table/matches`）、策略回测等只读接口；
+- **`web/`**：网页界面（Vite 与 React 构建），包含比赛列表、单场详情、预测结论、方案对比与多方案叠加曲线、赛前盘口与水位折线图（可选择博彩公司、横轴为对数刻度的距开赛时间）、数据表等页面，通过本地 API 取数；
 - **`scripts/live/`**：按竞彩日规则时点抓取多家公司（澳门、皇冠、威廉、平博、365、马会、竞彩等）赔率快照，只写研究副本库；附 as-of 补中盘、多日缺口扫描、补救队列 worker；
 - **`docs/schema/`**：盘口阶段术语、漏点补救规则、as-of 补盘、赛果入库节奏、场次消歧、防泄漏铁律等口径文档与 DDL；
 - **`research/`**：影子方案台账与验收清单（不含任何实盘资金细节）。
@@ -25,6 +26,7 @@
 ```
 .
 ├── api/                    FastAPI 本地 API（app/、scripts/ 运维与导入脚本、tests/、config/）
+├── web/                    网页界面（Vite + React + TypeScript；src/ 源码、.env.example 接口地址样例）
 ├── scripts/
 │   ├── live/               实时采集 live_capture、as-of 补中盘、gap-scan、rescue_queue/worker
 │   ├── backfill/           历史补数（5DF 多公司队列、澳门中盘补水、API-Football/InferSports/football-data 日更）
@@ -38,6 +40,7 @@
 ├── research/shadow-ledger/ 影子台账框架、方案登记模板（shadow-schemes.csv 仅表头）、防泄漏验收清单
 ├── config/                 strategy_params.example.json（策略参数模板，全为 null）
 ├── config.example.env      全部环境变量的样例与中文说明（复制为 .env 使用）
+├── CHANGELOG.md            版本更新记录
 ├── CONTRIBUTING.md
 └── LICENSE                 PolyForm Noncommercial 1.0.0
 ```
@@ -50,13 +53,14 @@
 
 - **Python 3.12 及以上**（`numpy 2.5` / `scipy 1.18` 要求 ≥3.12）
 - Git；`curl`（可选，用于健康检查）
-- 操作系统：API 在 Windows / macOS / Linux 均可运行；`scripts/live/live_capture.py` 使用 `fcntl` 文件锁，**需 Linux / macOS / WSL**
+- 操作系统：Windows、macOS 与 Linux 均可运行。从 v0.1.0 起，采集脚本使用跨平台文件锁（`api/app/portable_lock.py`：Linux 与 macOS 使用 fcntl，Windows 使用标准库 msvcrt），在 Windows 上也能运行 `python scripts/live/live_capture.py check-config`。
+- 运行网页界面另需 **Node.js 20.19 或更高版本**（附带 npm）。
 
 ### 1. 克隆并安装依赖
 
 ```bash
-git clone https://github.com/Dugege007/football_analyze_tool.git
-cd football_analyze_tool
+git clone https://github.com/Dugege007/football-analyze-tool.git
+cd football-analyze-tool
 python3 -m venv .venv
 source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r api/requirements.txt
@@ -138,6 +142,71 @@ cd api && python -m pytest -q
 
 真实文件不存在时，API 自动读取对应的 `*.example.json`，接口照常工作。两份真实文件均已在 `.gitignore` 中。
 
+## 在本机运行网页界面
+
+网页界面需要同时运行两个程序：后端接口（在 `api/` 目录下用 uvicorn 启动，端口 8787）和网页界面开发服务器（在 `web/` 目录下用 npm 启动，端口 5173）。网页界面开发服务器会把浏览器发往 `/api` 的请求转发给后端接口，因此一般不需要额外配置跨源访问。
+
+### 第一步：准备数据库配置
+
+在仓库根目录的 `.env` 文件中设置 `APP_DB_PATH`，让后端读取你自己的数据库：
+
+- 可以指向你每日备份出来的数据库文件，例如 `APP_DB_PATH=D:/football/current/app_latest.db`（Windows 路径建议使用正斜杠）。
+- 指向备份文件时，请同时设置 `APP_READONLY=1`。这样数据库会以只读方式打开，所有写入请求都会被拒绝，不会改动你的备份。
+- 如果暂时没有自己的数据库，可以先运行 `python api/scripts/seed.py` 生成一个演示数据库（默认位置为 `api/data/app.db`）。
+
+### 第二步：启动后端接口（终端一）
+
+Windows PowerShell，或者在 Cursor 中按 `` Ctrl+` `` 打开的终端（Cursor 在 Windows 上默认使用 PowerShell）：
+
+```powershell
+cd D:\你的路径\football-analyze-tool
+.venv\Scripts\Activate.ps1
+cd api
+uvicorn app.main:app --host 127.0.0.1 --port 8787
+```
+
+如果激活虚拟环境时提示禁止运行脚本，请先运行一次 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`，然后重新激活。
+
+macOS 或 Linux 终端：
+
+```bash
+source .venv/bin/activate
+cd api
+uvicorn app.main:app --host 127.0.0.1 --port 8787
+```
+
+启动后，在浏览器打开 <http://127.0.0.1:8787/health>，看到 `"ok":true` 即表示后端正常。接口调试页面在 <http://127.0.0.1:8787/docs>。
+
+### 第三步：启动网页界面（终端二）
+
+在 Cursor 中可以点击终端面板右上角的加号新建第二个终端，然后运行：
+
+```powershell
+cd D:\你的路径\football-analyze-tool\web
+npm install
+npm run dev
+```
+
+`npm install` 只需要在第一次运行或者依赖更新后执行。如果希望严格按照 `package-lock.json` 安装，可以用 `npm ci` 代替。
+
+### 第四步：在浏览器中打开
+
+打开 <http://127.0.0.1:5173>，即可看到比赛列表等页面。在比赛详情页中可以查看赛前盘口与水位折线图。
+
+### 修改接口地址或端口（可选）
+
+把 `web/.env.example` 复制为 `web/.env.local`，然后修改：
+
+- `VITE_API_BASE`：后端接口地址，默认 `http://127.0.0.1:8787`。如果后端换了端口，请同步修改这里。
+- `VITE_API_REPLICA_BASE`：可选的只读副本实例地址，默认 `http://127.0.0.1:8788`。没有副本实例时不需要修改。
+- `VITE_DEV_PORT`：网页界面开发服务器端口，默认 5173。
+
+如果你让浏览器直接访问后端接口（不经过网页界面开发服务器的转发），需要在仓库根目录的 `.env` 中用 `APP_CORS_ORIGINS` 列出允许访问的网页地址。跨源资源共享（Cross-Origin Resource Sharing，简称 CORS）默认只允许 `http://127.0.0.1:5173` 和 `http://localhost:5173`。
+
+### 停止
+
+在两个终端中分别按 `Ctrl+C`。
+
 ## 关键口径文档
 
 | 主题 | 文档 |
@@ -155,7 +224,7 @@ cd api && python -m pytest -q
 本项目采用 **[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)**（全文见 [`LICENSE`](LICENSE)）。
 
 - **个人使用、学习研究、非营利组织使用**：可以自由使用、修改和分发（分发时需保留 `LICENSE` 及其中的 `Required Notice` 行）。
-- **商业使用**（包括但不限于付费服务、商业产品、为营利目的提供分析结果）：需要另行取得作者的**商业授权**。请通过本仓库的 [GitHub Issue](https://github.com/Dugege007/football_analyze_tool/issues) 或作者 GitHub 主页（[@Dugege007](https://github.com/Dugege007)）联系。
+- **商业使用**（包括但不限于付费服务、商业产品、为营利目的提供分析结果）：需要另行取得作者的**商业授权**。请通过本仓库的 [GitHub Issue](https://github.com/Dugege007/football-analyze-tool/issues) 或作者 GitHub 主页（[@Dugege007](https://github.com/Dugege007)）联系。
 
 ## 贡献
 

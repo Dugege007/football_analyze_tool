@@ -1,0 +1,201 @@
+/* 数据表页 · 高亮样式（颜色取自 antd 色板，深色字保持可读） */
+
+/* 风险填充：黄(轻) → 橙(中) → 红(严重)。后写的级别优先（同时命中取最高） */
+.ag-cell.hl-fill-1 { background-color: #fff1b8; } /* gold-2 */
+.ag-cell.hl-fill-2 { background-color: #ffd591; } /* orange-3 */
+.ag-cell.hl-fill-3 { background-color: #ffa39e; } /* red-3 */
+
+/* 升降盘：只用字色，不填充 */
+.ag-cell.hl-up { color: #cf1322; font-weight: 600; }   /* red-7 */
+.ag-cell.hl-down { color: #389e0d; font-weight: 600; } /* green-7 */
+
+/* 结算：字色 */
+.ag-cell.hl-settle-win { color: #389e0d; font-weight: 600; }  /* green-7 */
+.ag-cell.hl-settle-win_half { color: #73d13d; }               /* green-5 */
+.ag-cell.hl-settle-push { color: #8c8c8c; }                    /* gray-7 */
+.ag-cell.hl-settle-lose_half { color: #ff7875; }              /* red-4 */
+.ag-cell.hl-settle-lose { color: #cf1322; font-weight: 600; } /* red-7 */
+.ag-cell.hl-settle-no_bet { color: #8c8c8c; font-style: italic; }
+
+/* 缺数 / 回落 / 近似：灰色斜体 */
+.ag-cell.hl-approx { color: #8c8c8c; font-style: italic; }
+/* 预测后盘口：虚线下划线 + 提示 */
+.ag-cell.hl-after-pred { text-decoration: underline dashed #8c8c8c; }
+/* §8-7：只加虚线下划线，不改字色 */
+
+/* 角标：凯利退回多家平均基准 */
+/* .ag-cell 本身已是 absolute 定位，角标直接相对单元格定位（不要改 position） */
+.ag-cell.hl-corner::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-style: solid;
+  border-width: 0 8px 8px 0;
+  border-color: transparent #8c8c8c transparent transparent;
+}
+
+/* 方向 */
+.ag-cell.sheet-dir-home { color: #1677ff; }
+.ag-cell.sheet-dir-away { color: #d46b08; }
+.ag-cell.sheet-dir-skip { color: #8c8c8c; }
+
+/* 平博表头突出 */
+.ag-header-group-cell.sheet-hdr-pinnacle { background-color: #e6f4ff; color: #0958d9; font-weight: 700; }
+
+/* 页面撑满视口宽度（外层布局限宽 1100） */
+.sheet-page {
+  width: calc(100vw - 48px);
+  margin-left: calc(50% - 50vw + 24px);
+}
+
+.sheet-legend-swatch {
+  display: inline-block;
+  min-width: 44px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid #f0f0f0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.sheet-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+}
+
+/* 「（真实）」对照列：浅灰底区分，不参与高亮 */
+.ag-cell.sheet-real-col { background-color: #fafafa; color: #595959; }
+
+/* 例外场（phase_exception）中盘/临盘：右上角小号「规」角标，低调灰色，不改字色与填充 */
+.ag-cell.hl-rule-mark::after {
+  content: '规';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 400;
+  font-style: normal;
+  color: #8c8c8c;
+  pointer-events: none;
+}
+
+/* 参考列（如欧赔接口收盘价）：灰字，不参与规则 */
+.ag-cell.sheet-ref-col { color: #8c8c8c; }
+.sheet-legend-rule-mark { position: relative; padding-right: 12px; }
+.sheet-legend-rule-mark::after {
+  content: '规';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: #8c8c8c;
+}
+
+/* 初盘来自接口开盘价（open_basis=api_opening）：右上角灰色小字「API」，与「规」同位置；两者都有时「规」在前 */
+.ag-cell.hl-api-mark::after {
+  content: 'API';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 400;
+  font-style: normal;
+  color: #8c8c8c;
+  pointer-events: none;
+}
+.ag-cell.hl-rule-mark.hl-api-mark::after { content: '规 API'; }
+.sheet-legend-api-mark { position: relative; padding-right: 20px; }
+.sheet-legend-api-mark::after {
+  content: 'API';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: #8c8c8c;
+}
+
+/* hl_v0.2：返还率格子水位为档位中点换算（tier_midpoint）——灰字、不上色（与规则开关无关） */
+.ag-cell.hl-rr-tier { color: #8c8c8c; }
+
+/* hl_v0.2 排查模式（「档位换算也上色（仅排查用）」）：按原阈值填色 + 红色虚线框 + 左上角「排查」。
+   EXPORT-NOTE(hl_v0.2)：排查色只在页面显示，不进任何导出（将来 exceljs 用 rules.ts exportableHits() 取色） */
+.ag-cell.hl-debug-tier {
+  outline: 2px dashed #d4380d;
+  outline-offset: -3px;
+}
+.ag-cell.hl-debug-tier::before {
+  content: '排查';
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 600;
+  font-style: normal;
+  color: #d4380d;
+  pointer-events: none;
+}
+.sheet-legend-debug-mark { position: relative; padding-left: 26px; outline: 2px dashed #d4380d; outline-offset: -3px; background: #fff1b8; }
+.sheet-legend-debug-mark::before {
+  content: '排查';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 600;
+  color: #d4380d;
+}
+.sheet-statusbar .sheet-debug-tip { color: #d4380d; font-weight: 600; }
+
+/* ───────── hl_v0.3（0.3.19）───────── */
+/* 待核对：右上角灰色小字「核」（开赛格竞彩时刻冲突 kickoff_jc_conflict / 11:10 自采与时间线表不一致 instant_src_diff）；
+   这两种格子都没有「规」「API」角标，不会冲突 */
+.ag-cell.hl-check-mark::after {
+  content: '核';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 400;
+  font-style: normal;
+  color: #8c8c8c;
+  pointer-events: none;
+}
+.sheet-legend-check-mark { position: relative; padding-right: 12px; }
+.sheet-legend-check-mark::after {
+  content: '核';
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: #8c8c8c;
+}
+/* 返还率偏高（≥ P90）：中性浅灰蓝，不是风险色，不进导出 */
+.ag-cell.hl-rr-high { background-color: #e6f0fa; }
+/* 兜底样本不足：灰字「样本不足，暂不判断」，不上色 */
+.ag-cell.hl-rr-insufficient { color: #8c8c8c; }
+/* 开赛时间疑似占位（预留字段）：灰字 */
+.ag-cell.hl-kickoff-suspect { color: #8c8c8c; font-style: italic; }
+/* 人工复核场：对阵灰字 */
+.ag-cell.hl-manual-review { color: #8c8c8c; }
+/* 推迟作废：灰斜体（同不下注） */
+.ag-cell.hl-settle-void_postponed { color: #8c8c8c; font-style: italic; }
+/* 悬停多行（11:10 双源等用换行分隔） */
+.ag-tooltip { white-space: pre-line; }
