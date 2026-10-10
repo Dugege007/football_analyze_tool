@@ -23,7 +23,7 @@ export type AhRuleBook = AhBook | AhParallelBook
  * 例外场（后端 phase_exception=true，前端不自己判定范围）：mid/close 为所属竞彩日规则时点（15:00 / 22:00），
  * mid_real/close_real 为真实 T−8h / T−1h。
  * 固定阶段用 open/mid/close，其余时刻的快照放 live[]（带 recorded_at），显示为「即时（抓取时间）」；
- * 竞彩日 11:10 那条由后端标 label=rule_1110，显示为「即时（11:10）」。
+ * 0.1.9（用户 2026-10-10）：竞彩日 11:10 快照不再作为一种盘口显示，「即时（11:10）」列已删除。
  */
 export const PHASES = ['open', 'mid', 'close'] as const
 export type Phase = (typeof PHASES)[number]
@@ -595,8 +595,8 @@ export interface BeTableResponse {
   items: BeTableRow[]
 }
 
-/** include_live 取值：none（默认）| rule_1110（只要 11:10 规定快照）| all */
-export type IncludeLive = 'none' | 'rule_1110' | 'all'
+/** include_live 取值：none（默认）| all（全部即时盘口）。rule_1110 已于 0.1.9 删除 */
+export type IncludeLive = 'none' | 'all'
 
 // ───────────────────────── 表格内部（平铺）─────────────────────────
 

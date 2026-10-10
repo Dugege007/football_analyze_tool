@@ -1,5 +1,8 @@
 # 竞彩胜平负／让球胜平负 · 日常采 + 表结构草案（副本优先）
 
+> **用户 2026-10-10 更正（优先于本文其他内容）**：「初盘」只有一个定义，就是各家公司开盘时的数据；竞彩日 11:10 只是我们去取数据的时间，不是一种盘口。本文中把 11:10 快照写成「即时（11:10）」、`rule_1110` 阶段、`include_live=rule_1110` 或 `live_rule_1110_*` 字段的内容，从 v0.1.9 起全部作废，只作历史记录保留。数据库里已有的 11:10 快照不删除，库结构不改。完整定义见 `v2_0-odds-phase-terminology.md` 开头一节。
+
+
 > **状态**：方案草案，供后端落地。先落 **v2d3 副本**，`DUAL_WRITE` **关**，不写现网 `app.db`。  
 > **日期**：2026-10-08 18:56 UTC+8  
 > **口径来源**：[`v2_0-jc-and-fundamentals-status-20261008.md`](./v2_0-jc-and-fundamentals-status-20261008.md)、[`../sporttery/notes.md`](../sporttery/notes.md)、盘口术语 [`v2_0-odds-phase-terminology.md`](./v2_0-odds-phase-terminology.md)

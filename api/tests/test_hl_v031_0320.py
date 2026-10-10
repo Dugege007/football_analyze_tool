@@ -49,7 +49,7 @@ def _own(p: Path, book: str, recorded_at: str, line=-0.5, wh=0.91, wa=0.95, mark
     c.close()
 
 
-def _live(as_of=None, mode="rule_1110"):
+def _live(as_of=None, mode="all"):
     p = {"date_from": JD, "date_to": JD, "scope": "all", "include_live": mode}
     if as_of:
         p["as_of"] = as_of
@@ -109,45 +109,7 @@ def test_own_in_window_boundary():
     assert tm.own_in_window(t + timedelta(minutes=10, seconds=1), t) is False
 
 
-def test_own_out_of_window_falls_back_to_timeline(db):
-    live0, _ = _live()
-    t = live0[("macau", "asian")]
-    # 11:25 = 超出 11:20；主值应退回时间线，自采进 alt（out_of_window=true）
-    _own(db, "macau", "2026-06-17T11:25:00+08:00", line=-(t["line"] + 0.25),
-         wh=t["home_water"] + 0.05, wa=t["away_water"])
-    e = _live()[0][("macau", "asian")]
-    it, d = _live.last
-    assert e["origin"] == "timeline" and e["odds_source"] == "hist"
-    assert e["line"] == t["line"] and e["own_capture_out_of_window"] is True
-    assert e["merge_rule"] == tm.LIVE_1110_MERGE_RULE_OOW
-    assert e["instant_src_diff"] is None  # 不同时刻的两路值不比
-    alt = e["alt"]
-    assert alt["out_of_window"] is True and alt["origin"] == "own_capture"
-    assert alt["captured_at"] == "2026-06-17T11:25:00+08:00" and alt["fetch_lag_min"] == 15.0
-    assert alt["line"] == t["line"] + 0.25
-    assert alt["water"] == {"home": pytest.approx(t["home_water"] + 0.05), "away": pytest.approx(t["away_water"])}
-    assert "own_1110_out_of_window" in it["match"]["daily_check"]
-    assert it["match"]["own_1110_out_of_window_cells"] >= 1
-    assert d["daily_check_summary"]["by_reason"]["own_1110_out_of_window"] >= 1
-    assert d["daily_check_summary"]["own_1110_out_of_window_cells"] >= 1
-    assert "instant_src_diff" not in it["match"]["daily_check"]
-
-
-def test_own_at_boundary_still_main(db):
-    live0, _ = _live()
-    t = live0[("macau", "asian")]
-    _own(db, "macau", "2026-06-17T11:20:00+08:00", line=-t["line"])
-    e = _live()[0][("macau", "asian")]
-    assert e["origin"] == "own_capture" and e["own_capture_out_of_window"] is False
-    assert e["alt"]["out_of_window"] is False and e["alt"]["origin"] == "timeline"
-
-
-def test_own_out_of_window_no_timeline(db):
-    _own(db, "pinnacle", "2026-06-17T11:30:00+08:00", line=0.25)
-    e = _live()[0][("pinnacle", "asian")]
-    assert e["own_capture_out_of_window"] is True and e["origin"] is None and e["line"] is None
-    assert e["alt"]["out_of_window"] is True and e["alt"]["origin"] == "own_capture"
-    assert e["main_source_reason"] == "own_capture_out_of_window;no_timeline"
+# 0.1.9：竞彩日 11:10 快照不再作为对外盘口阶段返回，原「自采超窗」接口测试已删除（见 test_no_1110_stage_0109.py）。
 
 
 def test_alt_water_shapes():

@@ -44,7 +44,7 @@ export interface LoadParams {
   dateTo: string
   scope: 'jingcai' | 'extra' | 'all'
   strategy: string
-  /** 即时快照：none | rule_1110（「即时（11:10）」列）| all；只在「盘口快照」视图请求 */
+  /** 即时盘口：none | all；只在「盘口快照」视图请求 */
   includeLive: IncludeLive
   /** 数据源：现网 /api（8787）或副本 /api-replica（8788）；默认现网 */
   source?: DbSource

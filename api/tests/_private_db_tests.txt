@@ -2,9 +2,6 @@
 # 真实库不在本机（或只有 seed 演示库）时由 conftest.py 自动跳过。
 test_hl_v031_0320.py::test_kickoff_drift_not_postpone
 test_hl_v031_0320.py::test_kickoff_rev_column_when_present
-test_hl_v031_0320.py::test_own_at_boundary_still_main
-test_hl_v031_0320.py::test_own_out_of_window_falls_back_to_timeline
-test_hl_v031_0320.py::test_own_out_of_window_no_timeline
 test_hl_v031_0320.py::test_phase_feature_defaults_and_extras
 test_hl_v031_0320.py::test_strategies_leak_suspect_endpoint
 test_jc_fundamentals_0321.py::test_hhad_cell_uses_decision_line
@@ -13,15 +10,6 @@ test_jc_fundamentals_0321.py::test_stats_meta_manual_seed
 test_kickoff_placeholder_0317.py::test_api_placeholder_full_jingcai_time_from_meta
 test_kickoff_placeholder_0317.py::test_api_placeholder_recomputes_targets
 test_kickoff_placeholder_0317.py::test_api_world_cup_three_keep_5df
-test_live_1110_merge_0319.py::test_asof_rules
-test_live_1110_merge_0319.py::test_diff_line_or_water_flags_daily_check[0.0-0.04]
-test_live_1110_merge_0319.py::test_diff_line_or_water_flags_daily_check[0.25-0.0]
-test_live_1110_merge_0319.py::test_flat_and_all_mode
-test_live_1110_merge_0319.py::test_non_own_rows_ignored
-test_live_1110_merge_0319.py::test_own_after_1110_still_used
-test_live_1110_merge_0319.py::test_own_only_book_no_alt
-test_live_1110_merge_0319.py::test_own_wins_timeline_in_alt_same_values_no_diff
-test_live_1110_merge_0319.py::test_timeline_only_has_source_no_alt
 test_live_capture.py::test_due_window
 test_live_capture.py::test_kickoff_advance_gap_catchup
 test_live_capture.py::test_kickoff_change_recomputes_targets_and_logs
@@ -108,3 +96,6 @@ test_table_matches_0317.py::test_hl_v02_config_and_real_only_baseline_counts[liv
 test_table_matches_0317.py::test_n_avg_present_wherever_kelly_computed[live]
 test_table_matches_0317.py::test_open_basis_reason_in_flat[live]
 test_table_matches_0317.py::test_row_level_kickoff_source_and_placeholder[live]
+test_no_1110_stage_0109.py::test_rule_1110_param_removed
+test_no_1110_stage_0109.py::test_all_mode_has_no_1110_entries_and_no_config
+test_no_1110_stage_0109.py::test_own_1110_capture_never_becomes_open

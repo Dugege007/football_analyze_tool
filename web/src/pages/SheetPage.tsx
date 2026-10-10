@@ -202,8 +202,6 @@ export default function SheetPage() {
   const [dailyCheck, setDailyCheck] = useState<DailyCheckSummary | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [reloadTick, setReloadTick] = useState(0)
-  // hl_v0.1：「即时（11:10）」作初盘的对照列，默认显示（旧开关值不沿用）
-  const [show1110, setShow1110] = useState<boolean>(() => readJson<boolean>('sheet.show1110.v2', true))
   const [showAllLive, setShowAllLive] = useState<boolean>(() => readJson<boolean>('sheet.showAllLive', false))
   const [showReal, setShowReal] = useState<boolean>(() => readJson<boolean>('sheet.showReal', false))
   const lastKey = useRef<string>('')
@@ -213,7 +211,7 @@ export default function SheetPage() {
   // ── 取数 ──
   // 只走批量接口；即时快照 live[] 只在「盘口快照」视图请求
   const includeLive: IncludeLive =
-    view !== 'snapshot' ? 'none' : showAllLive ? 'all' : show1110 ? 'rule_1110' : 'none'
+    view !== 'snapshot' ? 'none' : showAllLive ? 'all' : 'none'
   useEffect(() => {
     const key = `${dbSource}|${range[0].format('YYYY-MM-DD')}|${range[1].format('YYYY-MM-DD')}|${scope}|${includeLive}`
     if (key === lastKey.current) return
@@ -257,14 +255,13 @@ export default function SheetPage() {
 
   const presence = useMemo(() => computePresence(rows), [rows])
   const columnDefs = useMemo(
-    () => buildColumnDefs({ view, presence, books, show1110, showReal }),
-    [view, presence, books, show1110, showReal],
+    () => buildColumnDefs({ view, presence, books, showReal }),
+    [view, presence, books, showReal],
   )
   useEffect(() => {
-    localStorage.setItem('sheet.show1110.v2', JSON.stringify(show1110))
     localStorage.setItem('sheet.showAllLive', JSON.stringify(showAllLive))
     localStorage.setItem('sheet.showReal', JSON.stringify(showReal))
-  }, [show1110, showAllLive, showReal])
+  }, [showAllLive, showReal])
   // 返还率 / 凯利规则：后端有值才激活（无数据继续灰着）
   const dataAvailable = useMemo<Record<string, boolean>>(
     () => ({
@@ -565,17 +562,12 @@ export default function SheetPage() {
           <span className="sheet-legend-swatch" style={{ color: '#8c8c8c' }}>+0.5</span>
           <HelpTip tip="灰字盘口表示这一格没有水位：接口返回了主水和客水时会显示在盘口后面，没有时悬停显示「暂无水位」。澳门没有水位时可以回落到 0.95。" />
           <span className="sheet-legend-swatch sheet-legend-check-mark">10:00</span>
-          <HelpTip tip="格子右上角灰色的「核」表示待核对：开赛时间格是竞彩官方时刻与开赛时间相差超过 90 分钟；「即时（11:10）」格是自己采集的值与时间线表不一致。只做提示，不改颜色。" />
+          <HelpTip tip="格子右上角灰色的「核」表示待核对：开赛时间格是竞彩官方时刻与开赛时间相差超过 90 分钟。只做提示，不改颜色。" />
           <span className="sheet-legend-swatch" style={{ color: '#8c8c8c', fontStyle: 'italic' }}>待归阶段</span>
           <HelpTip tip="开赛时间还没确认时显示灰字「待归阶段」；依赖开赛时间的中盘和临盘格，悬停会提示「按占位开赛时间推算，不参与特征计算」等说明。" />
         </Space>
       </Space>
       <Space orientation="vertical" size={4} style={{ fontSize: 12 }}>
-        <Space size={6}>
-          <Switch size="small" checked={show1110} disabled={view !== 'snapshot'} onChange={setShow1110} />
-          <span>显示「即时（11:10）」列</span>
-          <HelpTip tip="只在盘口快照视图可用。显示竞彩日 11:10 的规定快照。" />
-        </Space>
         <Space size={6}>
           <Switch size="small" checked={showAllLive} disabled={view !== 'snapshot'} onChange={setShowAllLive} />
           <span>显示「即时（最新）」列</span>
@@ -630,7 +622,7 @@ export default function SheetPage() {
       })}
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <LabelWithHelp label="术语说明" tip={<>术语：初盘 = 各公司第一次开出的盘（各家开盘时间不同，悬停看开盘时间）；中盘 = 开赛前 8h；临盘 = 开赛前 1h；
-        竞彩日 11:10 的快照记为「即时（11:10）」作对照；其它时刻抓到的快照记为「即时（抓取时间）」。
+        即时盘口 = 比赛结束前任一时刻抓到的当时盘口，「即时（最新）」列显示最新一条，悬停可看抓取时间。
         例外场（后端标记）= 所属竞彩日当晚 23:00 及以后开赛（含次日开赛）的场：中盘（规则）= 该竞彩日 15:00、临盘（规则）= 该竞彩日 22:00；打开「对照真实时点」可看中盘（真实）= 赛前 8h、临盘（真实）= 赛前 1h。
         欧赔「收盘（时间未知）」为接口收盘价，报价时刻未知，只在完赛后作参考显示，不参与任何规则。
         高亮与结算默认用（规则）。各阶段时刻由后端给出，悬停盘口格子可看「目标时间 / 抓取时间」。只比较同一阶段的快照，缺快照的格子留空不判。
@@ -852,12 +844,6 @@ export default function SheetPage() {
                       {DAILY_CHECK_LABEL[k] ?? k}：{v} 场
                     </div>
                   ))}
-                  {dailyCheck.instant_src_diff_cells_in_live ? (
-                    <div>11:10 自采与时间线表不一致：{dailyCheck.instant_src_diff_cells_in_live} 格</div>
-                  ) : null}
-                  {dailyCheck.own_1110_out_of_window_cells ? (
-                    <div>11:10 自采超出 11:00–11:20：{dailyCheck.own_1110_out_of_window_cells} 格</div>
-                  ) : null}
                 </div>
               }
             >

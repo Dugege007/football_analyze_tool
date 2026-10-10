@@ -1378,10 +1378,11 @@ def daily_check_summary(items: list[dict]) -> dict:
 
 def build_live(d: _Data, mpk: int, jingcai_date: str, mode: str, as_of: datetime,
                rule_1110: Optional[list[dict]] = None) -> list[dict]:
-    """即时盘。rule_1110 条目见 rule_1110_entries；mode=all 另附时间线全部变化点（不带合并字段）。"""
-    if mode == "none":
-        return []
-    out = list(rule_1110 if rule_1110 is not None else rule_1110_entries(d, mpk, jingcai_date, as_of))
+    """即时盘口：mode=all 时返回时间线全部变化点。
+
+    0.1.9（用户 2026-10-10）：竞彩日 11:10 的自采快照不再作为一种对外盘口阶段返回；
+    参数 rule_1110 只为兼容旧调用保留，不再使用。"""
+    out: list[dict] = []
     if mode == "all":
         segs = [sg for sg in d.timeline.get(mpk, []) if (_to_cn(sg["seg_start_at"]) or as_of) <= as_of]
         out.extend(_timeline_entry(sg, None, None) for sg in segs)
@@ -1868,7 +1869,6 @@ class Schedule(_M_):
     close_target_time: Optional[str] = None
     mid_real_target_time: Optional[str] = None
     close_real_target_time: Optional[str] = None
-    live_rule_1110_target_time: Optional[str] = None
     source: str
 
 
@@ -2512,14 +2512,12 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
         _mf_row = match_flags(row, kick)
         _isd = [e for e in r1110 if e.get("instant_src_diff") is not None]
         _mf_row["instant_src_diff"] = (any(e["instant_src_diff"] for e in _isd) if _isd else None)
-        if _mf_row["instant_src_diff"]:
-            _mf_row["daily_check"] = list(_mf_row["daily_check"]) + ["instant_src_diff"]
+        # 0.1.9：11:10 快照不再是对外盘口阶段，两路来源不一致不再进日核对
         # 0.3.20：自采超出 [11:00, 11:20] → 主值已退回时间线；进日核对（采集延迟），不算 instant_src_diff
         _oow = sum(1 for e in r1110 if e.get("own_capture_out_of_window"))
         _mf_row["own_1110_out_of_window_cells"] = _oow if any(
             e.get("own_capture_out_of_window") is not None for e in r1110) else None
-        if _oow:
-            _mf_row["daily_check"] = list(_mf_row["daily_check"]) + ["own_1110_out_of_window"]
+        # 0.1.9：自采超窗不再进日核对
         # 0.3.20：kickoff_drift_min（只作信息展示；不碰推迟字段 / 目标时刻 / 日核对）
         _mf_row.update(kd.drift_fields(row["match_uid"], kick, eff_as_of))
         items.append({
@@ -2540,7 +2538,7 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
                 "home_team_canonical": row["home_canonical"], "away_team_canonical": row["away_canonical"],
             },
             "phase_exception": exc,
-            "schedule": sched,
+            "schedule": {k: v for k, v in sched.items() if k != "live_rule_1110_target_time"},
             "ah": ah_out,
             "x1x2": x_out,
             "x1x2_base": x_base,
@@ -2575,15 +2573,6 @@ def build_table(conn: sqlite3.Connection, *, date_from: str | None, date_to: str
         "config": {
             "result_visible_after_kickoff_hours": RESULT_VISIBLE_AFTER_KICKOFF.total_seconds() / 3600,
             "last_prematch_fresh_minutes": LAST_PREMATCH_FRESH_MINUTES,
-            "live_rule_1110": "%02d:%02d" % LIVE_RULE_1110,
-            "live_rule_1110_sources": ["odds_timeline_seg", "odds_snapshot(capture=own, odds_source=live)"],
-            "live_rule_1110_merge_rule": LIVE_1110_MERGE_RULE,
-            "live_rule_1110_own_window": {  # 0.3.20
-                "window": "[11:00, 11:20] inclusive (|captured_at - 11:10| <= %d min)" % LIVE_1110_OWN_WINDOW_MIN,
-                "in_window": LIVE_1110_MERGE_RULE,
-                "out_of_window": LIVE_1110_MERGE_RULE_OOW + " (own value kept in alt with captured_at, "
-                                 "alt.out_of_window=true; instant_src_diff=null; match.daily_check += own_1110_out_of_window)",
-                "feature_use": "unchanged: usable gate (captured_at <= target_at of the decision)"},
             "kickoff_drift": kd.config_block(),  # 0.3.20：只作信息展示
             "phase_feature_flags": {  # 0.3.20：副本自采；列或 extras；缺省如下（不读 state、不重算）
                 "cell_fields": ["phase_pending", "features_ok", "phase_assign_late"],
@@ -2693,8 +2682,8 @@ def table_matches(
                        description="jc=竞彩(scope=jingcai)｜ext=非竞彩(scope=extra)｜all"),
     strategy: str = Query("CFFXDJ_5_V3", description="predictions.strategy；默认 V3"),
     channel: Literal["rule"] = Query("rule", description="快照通道；目前仅 rule（*_real 自动取 actual t8/t1）"),
-    include_live: Literal["none", "rule_1110", "all"] = Query(
-        "none", description="none=live 空数组｜rule_1110=只给竞彩日 11:10 as-of 即时盘｜all=全部即时（含 rule_1110）"),
+    include_live: Literal["none", "all"] = Query(
+        "none", description="none=live 空数组｜all=全部即时盘口（时间线变化点）。rule_1110 取值已于 0.1.9 删除"),
     settlement_version: Optional[str] = Query(
         None, description="缺省 = 现网默认 ah_v4_water_midpoint；可选 ah_v4_macau_actual_or_095"),
     as_of: Optional[str] = Query(None, description="截止时刻（ISO；无时区按 +08:00）；缺省/未来 = now"),

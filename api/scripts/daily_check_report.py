@@ -31,7 +31,7 @@ def main() -> int:
     conn = sqlite3.connect(f"file:{a.db}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     out = tm.build_table(conn, date_from=a.date_from, date_to=a.date_to, scope=a.scope, strategy="none",
-                         channel="rule", include_live="rule_1110", settlement_version=None, as_of=a.as_of,
+                         channel="rule", include_live="none", settlement_version=None, as_of=a.as_of,
                          baseline_window_days=None, baseline_min_n=5, limit=100000, offset=0)
     items = out["items"]
     summ = tm.daily_check_summary(items)

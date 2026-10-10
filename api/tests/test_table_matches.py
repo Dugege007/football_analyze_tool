@@ -477,15 +477,15 @@ def test_live_and_last_prematch(db, client):
     c.commit()
     none = _row(_get(client, date_from="2026-06-06", date_to="2026-06-06"), "2026-06-06|六204")
     assert none["live"] == []
-    r1110 = _row(_get(client, date_from="2026-06-06", date_to="2026-06-06", include_live="rule_1110"),
-                 "2026-06-06|六204")["live"]
-    assert len(r1110) == 1 and r1110[0]["label"] == "rule_1110"
-    assert r1110[0]["target_at"] == "2026-06-06T11:10:00+08:00"
-    assert r1110[0]["recorded_at"] == "2026-06-06T09:00:00+08:00" and r1110[0]["line"] == 0.25
+    # 0.1.9：include_live=rule_1110 已删除；all 只返回时间线变化点，不含 11:10 快照
+    bad = client.get("/table/matches", params={"date_from": "2026-06-06", "date_to": "2026-06-06",
+                                                "include_live": "rule_1110"})
+    assert bad.status_code == 422
     full = _row(_get(client, date_from="2026-06-06", date_to="2026-06-06", include_live="all"),
                 "2026-06-06|六204")
     labels = [e["label"] for e in full["live"]]
-    assert labels.count("rule_1110") == 1 and labels.count(None) == 4
+    assert "rule_1110" not in labels and labels.count(None) == 4
+    assert "live_rule_1110_target_time" not in full["schedule"]
     lp = full["ah"]["pinnacle"]["last_prematch"]
     assert lp["recorded_at"] == "2026-06-06T15:50:00+08:00"  # 开赛后的 in-play 不算
     assert lp["minutes_before_kickoff"] == 10.0 and lp["stale"] is False

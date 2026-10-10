@@ -8,7 +8,7 @@ import type { ColDef, ColGroupDef, TooltipCallbackParams, ValueFormatterParams }
 import dayjs from 'dayjs'
 import type { AhBook, OpenInfo, Phase, SheetRow, ViewId } from './types'
 import { AH_BOOKS, BOOK_LABEL, EXCEPTION_DESC, PARALLEL_BOOK_LABEL, PHASE_HINT, PHASE_LABEL, SETTLE_LABEL, isCollectorEmpty } from './types'
-import { formatHandicap, formatHandicapCn, formatHandicapLine, formatMove, lineMove } from './handicap'
+import { formatHandicapCn, formatHandicapLine, formatMove, lineMove } from './handicap'
 import { RR_WATER_TIP, buildCellClassRules, evaluateCell, fallbackLineTip, openMissingTip, rrWaterKind, type ColMeta, type RuleContext } from './rules'
 import {
   FEATURES_NOT_OK_TIP,
@@ -274,57 +274,8 @@ export function fmtFrozen(row: SheetRow | undefined): string {
   return `🔒 已冻结 ${d.format(sameDay ? 'HH:mm' : 'MM-DD HH:mm')}`
 }
 
-/** 「即时（11:10）」：只认后端 label=rule_1110 的那条（阶段时刻由后端定，前端不推算） */
-export function pick1110(row: SheetRow, book: AhBook) {
-  return row.ah[book].live.find((c) => c.label === 'rule_1110') ?? null
-}
 
-/** 0.3.19 自采与时间线表不一致 */
-export const INSTANT_SRC_DIFF_TIP = '自采与时间线表不一致，待核对'
 
-const isOwn = (origin: string | null | undefined, capture?: string | null) => origin === 'own_capture' || capture === 'own'
-
-/**
- * 0.3.19 即时（11:10）双源悬停（只展示，颜色 / 导出只用主值）：
- *   主值自采：「自采（抓取 HH:mm:ss）」，有 alt 时加「时间线表（tick HH:mm:ss）：盘口/水位」；
- *   主值时间线表：「时间线表（tick HH:mm:ss）」；alt 为自采（落在 11:00–11:20 之外）时加
- *   「自采（抓取 HH:mm:ss，超出 11:00–11:20，仅供对照）」。
- * alt 来源：接口没有专门字段（以接口为准），先看 alt.origin / alt.capture，没有时按主值 origin 反推（主值自采 → alt 为时间线表，反之亦然）。
- */
-export function instant1110Tip(c: AhCell): string {
-  const ins = c.instant
-  const water = `主水 ${fmtNum(c.hw)} · 客水 ${fmtNum(c.aw)}`
-  const lines: string[] = []
-  const mainOwn = isOwn(ins?.origin, ins?.capture)
-  const label = c.lineNonStandard ? (c.lineRaw ?? String(c.line)) : formatHandicap(c.line)
-  if (c.line == null) {
-    lines.push('时间线表：无 11:10 数据')
-  } else if (mainOwn) {
-    const lag = ins?.fetchLagMin != null ? `，延迟 ${ins.fetchLagMin} 分钟` : ''
-    lines.push(`自采（抓取 ${fmtTime(ins?.capturedAt ?? c.recordedAt, 'HH:mm:ss') ?? '—'}${lag}）：${label} · ${water}`)
-  } else {
-    lines.push(`时间线表（tick ${fmtTime(c.recordedAt, 'HH:mm:ss') ?? '—'}）：${label} · ${water}`)
-  }
-  const alt = ins?.alt
-  if (alt) {
-    const altOwn = alt.origin != null || alt.capture != null ? isOwn(alt.origin, alt.capture) : !mainOwn
-    // 0.3.20 起 alt 带 out_of_window；0.3.19 没有该字段时，「主值时间线表 + alt 自采」即为超窗
-    const w = alt.water ?? {}
-    const altWater = `主水 ${fmtNum(w.home)} · 客水 ${fmtNum(w.away)}`
-    const altLine = alt.line != null ? formatHandicap(alt.line) : '—'
-    if (altOwn) {
-      const oow = alt.out_of_window ?? !mainOwn
-      lines.push(
-        `自采（抓取 ${fmtTime(alt.captured_at ?? alt.tick_at, 'HH:mm:ss') ?? '—'}${oow ? '，超出 11:00–11:20，仅供对照' : ''}）：${altLine} · ${altWater}`,
-      )
-    } else {
-      lines.push(`时间线表（tick ${fmtTime(alt.tick_at, 'HH:mm:ss') ?? '—'}）：${altLine} · ${altWater}`)
-    }
-  }
-  if (ins?.srcDiff === true) lines.push(INSTANT_SRC_DIFF_TIP)
-  lines.push(`目标时间 ${fmtTime(c.targetAt) ?? '—'}；颜色与导出只用主值`)
-  return lines.join('\n')
-}
 
 /** 推迟场：mid / close 目标时刻依据（后端 schedule.postpone_target_basis） */
 export const POSTPONE_BASIS_TIP: Record<string, string> = {
@@ -557,7 +508,6 @@ function ahGroup(
   pr: Presence,
   view: ViewId,
   hidden: boolean,
-  show1110: boolean,
   showReal: boolean,
 ): ColGroupDef<SheetRow> {
   const has = pr.ahLine[book]
@@ -688,32 +638,6 @@ function ahGroup(
   children.push(lineCol('close'))
   if (showWaterCols) children.push(waterSideCol('close', 'aw', '客水'))
   children.push(realCol('closeReal'))
-  if (view === 'snapshot') {
-    // 竞彩日 11:10 的即时快照：只取后端标 label=rule_1110 的那条（前端不按时间去找），作对照，不参与高亮
-    children.push({
-      colId: `ah.${book}.live1110.line`,
-      headerName: '即时（11:10）',
-      headerTooltip: '竞彩日 11:10 的即时快照（后端标 rule_1110），作对照；抓取时间见悬停。自采只在 11:00–11:20 内当主值，否则主值用时间线表、自采放悬停对照。不参与高亮判定，导出只用主值',
-      width: 88,
-      minWidth: 64,
-      maxWidth: 110,
-      hide: !show1110,
-      filter: 'agNumberColumnFilter',
-      valueGetter: (p) => (p.data ? (pick1110(p.data, book)?.line ?? null) : null),
-      valueFormatter: (p) => {
-        const c = p.data ? pick1110(p.data, book) : null
-        if (!c || c.line == null) return '—'
-        return formatAhLineWithWater(c)
-      },
-      cellClassRules: {
-        'hl-check-mark': (p) => (p.data ? pick1110(p.data, book)?.instant?.srcDiff === true : false),
-      },
-      tooltip: (p) => {
-        const c = p.data ? pick1110(p.data, book) : null
-        return c && (c.line != null || c.instant?.alt) ? instant1110Tip(c) : '暂无 11:10 即时快照'
-      },
-    })
-  }
   if (pr.ahLive[book]) {
     // 其它时刻的即时快照：只展示最近一条，不参与升降/分歧判定（不同阶段不比较）
     children.push({
@@ -725,14 +649,14 @@ function ahGroup(
       maxWidth: 110,
       columnGroupShow: 'open',
       filter: 'agNumberColumnFilter',
-      valueGetter: (p) => p.data?.ah[book].live.at(-1)?.line ?? null,
+      valueGetter: (p) => p.data?.ah[book].live.filter((c) => c.label !== 'rule_1110').at(-1)?.line ?? null,
       valueFormatter: (p) => {
-        const c = p.data?.ah[book].live.at(-1)
+        const c = p.data?.ah[book].live.filter((c) => c.label !== 'rule_1110').at(-1)
         if (!c || c.line == null) return '—'
         return formatAhLineWithWater(c)
       },
       tooltip: (p) => {
-        const live = p.data?.ah[book].live ?? []
+        const live = (p.data?.ah[book].live ?? []).filter((c) => c.label !== 'rule_1110')
         if (!live.length) return null
         return live
           .map((c) => `抓取时间 ${c.recordedAt} · ${formatHandicapLine(c.line)} · ${ahLineWaterTipExtra(c)}`)
@@ -924,8 +848,6 @@ function x1x2Group(book: AhBook, pr: Presence, hidden: boolean): ColGroupDef<She
 export interface BuildOpts {
   view: ViewId
   presence: Presence
-  /** 显示「即时（11:10）」列（默认隐藏） */
-  show1110: boolean
   /** 对照真实时点：显示「中盘（真实）」「临盘（真实）」列（默认关，只对例外场有意义） */
   showReal: boolean
   /** 公司（列）筛选：只显示这些公司的盘口列 */
@@ -939,7 +861,7 @@ const VIEW_GROUPS: Record<ViewId, { ahBooks: AhBook[] | 'all'; x1x2: boolean; jc
   review: { ahBooks: ['pinnacle', 'macau'], x1x2: false, jc: false, pred: 'full', result: true },
 }
 
-export function buildColumnDefs({ view, presence: pr, books, show1110, showReal }: BuildOpts): AnyCol[] {
+export function buildColumnDefs({ view, presence: pr, books, showReal }: BuildOpts): AnyCol[] {
   COL_META.clear()
   const vg = VIEW_GROUPS[view]
   const cols: AnyCol[] = []
@@ -1013,7 +935,7 @@ export function buildColumnDefs({ view, presence: pr, books, show1110, showReal 
 
   for (const b of AH_BOOKS) {
     const inView = vg.ahBooks === 'all' || vg.ahBooks.includes(b)
-    cols.push(ahGroup(b, pr, view, !(inView && books.includes(b)), show1110, showReal))
+    cols.push(ahGroup(b, pr, view, !(inView && books.includes(b)), showReal))
   }
 
   // 0.3.22：macau_5df 并列列（有数据才出）；与手工澳门分路，规则只比本路 open→close

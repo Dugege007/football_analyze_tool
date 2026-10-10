@@ -3,6 +3,21 @@
 本文件记录 football-analyze-tool 公开仓库每个版本的变化。版本号遵循语义化版本（Semantic Versioning）规则。
 
 
+## v0.1.9（2026-10-10）
+
+### 「初盘」只有一个定义；删除「即时（11:10）」
+- 用户在 2026-10-10 更正：「初盘」只有一个定义，就是各家公司开盘时的数据；竞彩日 11:10 只是我们去取数据的时间，不是一种盘口；「即时盘口」的定义也不是 11:10 的快照。2026-10-08 把 11:10 快照存成「即时（11:10）」的约定从此作废。
+- 数据表页：删除「即时（11:10）」列、「显示『即时（11:10）』列」开关和相关的悬停说明；日核对悬停里不再显示 11:10 两路来源的计数。「即时（最新）」列保留，它显示比赛结束前最新抓到的一条即时盘口，并且排除 11:10 自采快照。
+- 后端接口 `GET /table/matches`：删除 `include_live=rule_1110` 取值（传入时返回 422）；`include_live=all` 只返回时间线变化点，不再包含标签为 `rule_1110` 的条目；`schedule` 不再返回 `live_rule_1110_target_time`；`config` 不再返回 `live_rule_1110` 开头的字段；日核对不再因为 11:10 两路来源不一致或自采超出 11:00 到 11:20 而列为待核对。初盘（`open`）的取值逻辑不变，11:10 自采快照仍然不会被当成初盘。
+- 日核对脚本 api/scripts/daily_check_report.py 改为 `include_live=none`。
+- 测试：删除 api/tests/test_live_1110_merge_0319.py 和 test_hl_v031_0320.py 里三个 11:10 自采超窗的接口测试；新增 api/tests/test_no_1110_stage_0109.py。
+
+### 文档
+- docs/schema/v2_0-odds-phase-terminology.md 开头新增用户 2026-10-10 的定义，并把旧约定标为作废；v2_0-table-matches-api.md、v2_0-data-table-highlight-rules.md、v2_0-jc-odds-capture-schema-draft.md 开头加上作废说明；OpenAPI 片段删除 `rule_1110` 取值和 `live_rule_1110_target_time` 字段。
+
+### 范围说明
+- 数据库里已有的 11:10 快照不删除，库结构不改；实时采集脚本和抓取节奏不改。
+
 ## v0.1.8（2026-10-10）
 
 ### 删除网页「预测」页，功能归并到赛程页与比赛详情页

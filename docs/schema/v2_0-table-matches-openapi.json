@@ -95,15 +95,14 @@
             "schema": {
               "enum": [
                 "none",
-                "rule_1110",
                 "all"
               ],
               "type": "string",
-              "description": "none=live 空数组｜rule_1110=只给竞彩日 11:10 as-of 即时盘｜all=全部即时（含 rule_1110）",
+              "description": "none=live 空数组｜all=全部即时盘口（时间线变化点）。rule_1110 取值已于 0.1.9 删除",
               "default": "none",
               "title": "Include Live"
             },
-            "description": "none=live 空数组｜rule_1110=只给竞彩日 11:10 as-of 即时盘｜all=全部即时（含 rule_1110）"
+            "description": "none=live 空数组｜all=全部即时盘口（时间线变化点）。rule_1110 取值已于 0.1.9 删除"
           },
           {
             "name": "settlement_version",
@@ -2064,17 +2063,6 @@
               }
             ],
             "title": "Close Real Target Time"
-          },
-          "live_rule_1110_target_time": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Live Rule 1110 Target Time"
           },
           "source": {
             "type": "string",
