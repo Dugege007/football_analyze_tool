@@ -11,7 +11,6 @@ import {
 import MatchListPage from './pages/MatchListPage'
 import MatchDetailPage from './pages/MatchDetailPage'
 import BankrollCalcPage from './pages/BankrollCalcPage'
-import PredictionsPage from './pages/PredictionsPage'
 import SettingsPage from './pages/SettingsPage'
 import SchemeFactoryPage from './pages/SchemeFactoryPage'
 import ValidatePage from './pages/ValidatePage'
@@ -30,7 +29,6 @@ const { Text } = Typography
 
 function navKey(pathname: string): string {
   if (pathname.startsWith('/bankroll')) return 'bankroll'
-  if (pathname.startsWith('/predictions')) return 'predictions'
   if (pathname.startsWith('/settings')) return 'settings'
   if (pathname.startsWith('/schemes')) return 'schemes'
   if (pathname.startsWith('/validate')) return 'validate'
@@ -65,7 +63,6 @@ function AppShell() {
           style={{ flex: 1, minWidth: 0, background: 'transparent' }}
           items={[
             { key: 'matches', label: <Link to="/">赛程</Link> },
-            { key: 'predictions', label: <Link to="/predictions">预测</Link> },
             { key: 'sheet', label: <Link to="/sheet">数据表</Link> },
             { key: 'bankroll', label: <Link to="/bankroll">注额</Link> },
             { key: 'schemes', label: <Link to="/schemes">方案</Link> },
@@ -87,7 +84,8 @@ function AppShell() {
         <Routes>
           <Route path="/" element={<MatchListPage />} />
           <Route path="/matches/:id" element={<MatchDetailPage />} />
-          <Route path="/predictions" element={<PredictionsPage />} />
+          <Route path="/predictions" element={<Navigate to="/" replace />} />
+          <Route path="/predictions/*" element={<Navigate to="/" replace />} />
           <Route path="/bankroll" element={<BankrollCalcPage />} />
           <Route path="/schemes" element={<SchemeFactoryPage />} />
           <Route path="/validate" element={<ValidatePage />} />

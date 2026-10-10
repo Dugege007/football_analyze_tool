@@ -1,3 +1,9 @@
+/**
+ * 份数推算与旧版亚盘消息行辅助函数（公共文件）。
+ * simplifiedStakeFromRationale 与后端 api/app/main.py 的 estimate_stake_from_rationale 口径相同。
+ * 「当日赛程」页的消息预览请使用 dailyMessageTemplate.ts 与 pickFormat.ts；本文件不再被任何页面直接引用，
+ * 保留是为了与后端份数推算对照，以及供脚本或后续页面复用。
+ */
 import type { Direction, Odds } from './types'
 
 /** 从澳门结算盘取出主队亚盘口（数字；库内约定是主队让球为正数、主队受让为负数）。 */

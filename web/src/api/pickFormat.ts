@@ -28,7 +28,7 @@ export interface Pick {
   line?: number | null
   line_text?: string | null
   stake?: number | null
-  /** true 表示冻结预测没有记录份数，份数是按预测页口径推算出来的 */
+  /** true 表示冻结预测没有记录份数，份数是按方案规则（与 messagePreview.simplifiedStakeFromRationale / 后端 estimate_stake_from_rationale 相同）推算出来的 */
   stake_estimated?: boolean
 }
 

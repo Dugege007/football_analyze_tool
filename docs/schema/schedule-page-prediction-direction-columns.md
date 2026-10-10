@@ -4,7 +4,7 @@
 
 ## 页面布局
 
-1. 「当日赛程」页保持清爽，作为总览和导航使用。每场比赛的「依据要点」不放在赛程页，仍然在「预测」页和比赛详情页查看。
+1. 「当日赛程」页保持清爽，作为总览和导航使用。每场比赛的「依据要点」不放在赛程页，在比赛详情页的「预测结论」区域查看。独立的网页「预测」页已在 v0.1.8 删除。
 2. 表格上方有一个「显示预测方向」开关。开关默认关闭，此时五个预测方向列折叠不显示；打开后，在「使用方案」列后面显示「亚盘」「欧盘」「大小」「竞彩」「竞彩让球」五列。开关状态保存在浏览器本地存储里（键名为 schedule.showPredictionColumns），下次打开页面时保持上一次的状态。
 3. 表格上方有一个可以折叠的「当日消息预览」卡片，卡片标题右侧有「复制全部」和「只复制未开赛」两个按钮。消息只在页面上显示和复制，不会自动发送给任何人。
 
@@ -39,12 +39,12 @@
 ## 份数
 
 1. 份数优先使用冻结预测里记录的份数（predictions.stake 或 prediction_legs.stake）。
-2. 冻结预测没有记录份数（predictions.stake 为空）时，按「预测」页现有的推算口径计算：从依据要点里读出 dir_sum（或 bucket=SUM=）的绝对值，绝对值为 5 时推算为 2 份，绝对值为 3 时推算为 1 份，其他情况无法推算，只显示方向、不显示份数。这个推算写在后端 api/app/main.py 的 estimate_stake_from_rationale 函数里，与前端 web/src/api/messagePreview.ts 的 simplifiedStakeFromRationale 口径相同。
-3. 推算出来的份数在表格里会在后面加一个星号「*」，鼠标停在上面会提示「冻结预测没有记录份数，份数是按预测页口径推算的」。当日消息里不加星号。到 v0.1.5 为止，正式库里正式方案的 12 条下注预测都没有记录份数，所以显示的份数全部是推算值。
+2. 冻结预测没有记录份数（predictions.stake 为空）时，按既有的简化份数推算口径计算：从依据要点里读出 dir_sum（或 bucket=SUM=）的绝对值，绝对值为 5 时推算为 2 份，绝对值为 3 时推算为 1 份，其他情况无法推算，只显示方向、不显示份数。这个推算写在后端 api/app/main.py 的 estimate_stake_from_rationale 函数里，与前端 web/src/api/messagePreview.ts 的 simplifiedStakeFromRationale 口径相同。
+3. 推算出来的份数在表格里会在后面加一个星号「*」，鼠标停在上面会提示「冻结预测没有记录份数，份数是按方案规则推算的」。当日消息里不加星号。到 v0.1.5 为止，正式库里正式方案的 12 条下注预测都没有记录份数，所以显示的份数全部是推算值。
 
 ## 当日消息（用户 2026-10-10 确认定稿）
 
-1. 模板文件是 web/src/api/dailyMessageTemplate.ts。「预测」页的预览通过 web/src/api/messagePreview.ts 的 formatMatchHeaderLine / formatAhMessageLine 生成同样结构的文本。本机研究目录（不在仓库里）的 odds-data/schema/daily-prediction-dm-schedule.md 第 5 节旧草案已作废，以本节为准。
+1. 模板文件是 web/src/api/dailyMessageTemplate.ts。份数推算的前端对照函数仍在 web/src/api/messagePreview.ts 的 simplifiedStakeFromRationale。本机研究目录（不在仓库里）的 odds-data/schema/daily-prediction-dm-schedule.md 第 5 节旧草案已作废，以本节为准。
 2. **没有标题行**。每一场下注的比赛先写一行标题，再写一行或多行方向：
    - 标题行：`- 完整竞彩编号 开赛时间(HH:MM) 赛事 主队-客队：`。编号保留星期前缀（例如「六204」「六001」），不要去掉「六」；主队和客队之间用半角「-」连接；行末用全角冒号「：」。
    - 方向行：两个空格缩进，然后写方向，方向与「x份数」之间是两个空格，行末用全角分号「；」。同一场有多个方向时，每个方向各占一行。

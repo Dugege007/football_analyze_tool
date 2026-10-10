@@ -3,6 +3,21 @@
 本文件记录 football-analyze-tool 公开仓库每个版本的变化。版本号遵循语义化版本（Semantic Versioning）规则。
 
 
+## v0.1.8（2026-10-10）
+
+### 删除网页「预测」页，功能归并到赛程页与比赛详情页
+- 删除前端页面文件 web/src/pages/PredictionsPage.tsx，并从顶部菜单中去掉「预测」入口。
+- 访问旧网址路径 `/predictions` 或 `/predictions/*` 时，页面会重定向到当日赛程页（路径 `/`）。
+- 删除前已核对：比赛详情页的「预测结论」卡片里继续显示「依据要点」；当日赛程页继续显示五个预测方向列、「使用方案」列和「当日消息预览」。
+- 份数推算函数 simplifiedStakeFromRationale 仍保留在公共文件 web/src/api/messagePreview.ts 中，与后端 api/app/main.py 的 estimate_stake_from_rationale 口径相同。赛程页的消息预览继续使用 dailyMessageTemplate.ts 与 pickFormat.ts。
+- 后端预测相关接口不做删除，也不改动数据库与实时采集。
+
+### 文档
+- web/README.md、web/UI-GUIDELINES.md、docs/schema/schedule-page-prediction-direction-columns.md 中提到独立「预测」页的说明已改为指向赛程页与比赛详情页。
+
+### 范围说明
+- 本版本只改动网页界面路由、菜单、文档与版本记录，不改动后端接口、数据库和实时采集。
+
 ## v0.1.7（2026-10-10）
 
 ### 「当日赛程」页：当日消息预览改为用户确认的定稿格式
