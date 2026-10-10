@@ -28,7 +28,7 @@ TZ_CN = timezone(timedelta(hours=8))
 # 主列表: abs(now - collect_at) <= PENDING_ABS_MIN；补发: include_overdue → collect_at <= now <= kickoff
 PENDING_ABS_MIN = 30
 
-API_VERSION = "0.3.23"
+API_VERSION = "0.3.24"
 
 # D2：现网双写开关（拍板默认关；副本演练用 scripts/sync_odds_asian_from_snapshot.py）
 DUAL_WRITE_ODDS_ASIAN = os.environ.get("DUAL_WRITE_ODDS_ASIAN", "0").strip().lower() in (
@@ -513,6 +513,25 @@ def health() -> dict:
             "meta": _adb.db_meta()}
 
 
+def formal_strategies_for_match(conn: sqlite3.Connection, match_db_id: int) -> list[str]:
+    """该场冻结预测所用的正式方案代码（只读）。
+
+    正式方案 = strategy_defs.status = 'active' 且不是 test_only；影子方案与测试方案不列出。
+    """
+    rows = conn.execute(
+        """
+        SELECT DISTINCT p.strategy FROM predictions p
+        WHERE p.match_id = ?
+          AND p.strategy IN (SELECT strategy_key FROM strategy_defs
+                             WHERE status = 'active'
+                               AND COALESCE(json_extract(config_json, '$.extras.test_only'), 0) != 1)
+        ORDER BY p.strategy
+        """,
+        (match_db_id,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
 @app.get("/matches")
 def list_matches(
     date: str = Query(..., description="竞彩日 YYYY-MM-DD"),
@@ -567,6 +586,7 @@ def list_matches(
                     "has_prediction": bool(row["pred_count"]),
                     "direction": row["direction"],
                     "result": build_result(conn, row["id"]),
+                    "strategies": formal_strategies_for_match(conn, row["id"]),
                 }
             )
         return {"date": date, "scope": scope, "items": items}

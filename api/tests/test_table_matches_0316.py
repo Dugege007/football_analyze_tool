@@ -295,7 +295,7 @@ def test_api_closing_not_in_baseline(db, client):
 
 
 def test_api_version():
-    assert API_VERSION == "0.3.23"
+    assert API_VERSION == "0.3.24"
 
 
 def test_api_closing_row_does_not_change_multi_avg_kelly_rr(db, client):

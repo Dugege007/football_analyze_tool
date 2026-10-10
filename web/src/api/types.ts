@@ -14,6 +14,7 @@ export interface Match {
   competition?: { name?: string; type?: string; stage?: string }
   kickoff_hour?: number
   kickoff_at?: string | null
+  kickoff_minute_known?: boolean
   teams: { home: string; away: string }
   ids?: Record<string, unknown>
 }
@@ -136,6 +137,8 @@ export interface MatchListItem {
   direction?: Direction | null
   /** 列表赛果；后端补齐前可能缺，前端可回落详情 */
   result?: Result | null
+  /** 0.3.24：该场冻结预测所用的正式方案代码；没有预测为空数组 */
+  strategies?: string[]
 }
 
 export interface MatchListResponse {

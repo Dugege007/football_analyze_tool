@@ -35,7 +35,7 @@ def db(tmp_path, monkeypatch):
 
 
 def test_api_version():
-    assert API_VERSION == "0.3.23"
+    assert API_VERSION == "0.3.24"
 
 
 # ---------- pure: constituent gate ----------
@@ -129,7 +129,7 @@ def test_legacy_home_only_incomplete(db):
     jd = c.execute("SELECT jingcai_date FROM matches WHERE id=?", (mid,)).fetchone()[0]
     c.close()
     d = TestClient(app).get("/table/matches", params={"date_from": jd, "date_to": jd, "scope": "all"}).json()
-    assert d["api_version"] == "0.3.23"
+    assert d["api_version"] == "0.3.24"
     assert "jc_fundamentals" in d["config"]
     item = next(i for i in d["items"] if i["match"]["match_pk"] == mid)
     # open or close should be incomplete if only home_only
